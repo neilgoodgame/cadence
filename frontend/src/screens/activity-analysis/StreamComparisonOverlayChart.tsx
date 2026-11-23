@@ -18,17 +18,24 @@ interface Point {
 
 /** Overlay of both sides of a stream comparison (issue #503, phase 4) on the activity's own
  * shared timeline - same shared-scale, two-path idiom as MergeOverlayChart, but both series
- * come from one activity's two stored sources instead of two separate activities. */
+ * come from one activity's two stored sources instead of two separate activities.
+ *
+ * highlightRanges (issue #540, phase 6) shades [start_t, end_t] inclusive spans behind the
+ * lines - StreamFlagsCard's own detected contact-loss/cadence-lock runs. No existing annotation
+ * support here before this, so this is the minimal prop rather than a parallel chart
+ * component. */
 export function StreamComparisonOverlayChart({
   points,
   unit,
   labelA = "a",
   labelB = "b",
+  highlightRanges,
 }: {
   points: StreamComparisonPoint[];
   unit: string;
   labelA?: string;
   labelB?: string;
+  highlightRanges?: readonly [number, number][];
 }) {
   const chart = useMemo(() => {
     if (points.length === 0) return null;
@@ -54,6 +61,7 @@ export function StreamComparisonOverlayChart({
       bPath: lineFn(bPoints),
       ticks: y.ticks(3),
       yAt: y,
+      xAt: x,
     };
   }, [points]);
 
@@ -76,6 +84,17 @@ export function StreamComparisonOverlayChart({
                 {tick}
               </text>
             </g>
+          ))}
+          {highlightRanges?.map(([startT, endT]) => (
+            <rect
+              key={`${startT}-${endT}`}
+              x={chart.xAt(startT)}
+              y={0}
+              width={Math.max(1, chart.xAt(endT) - chart.xAt(startT))}
+              height={chart.innerHeight}
+              fill="var(--danger, #c0392b)"
+              opacity={0.12}
+            />
           ))}
           {chart.aPath && <path d={chart.aPath} fill="none" stroke={A_COLOR} strokeWidth={1.5} />}
           {chart.bPath && <path d={chart.bPath} fill="none" stroke={B_COLOR} strokeWidth={1.5} opacity={0.85} />}

@@ -864,6 +864,60 @@ export interface StreamComparison {
   dropout_runs_b: DropoutRun[];
 }
 
+/** Issue #540 (phase 6). "contact_loss" (field="power"/"heartrate"/"cadence") is a frozen/
+ * garbage sensor value or physiologically-impossible jump; "cadence_lock" (field="heartrate"
+ * only) is a wrist HR stream correlating with cadence instead of a true pulse signal. */
+export type StreamFlagKind = "contact_loss" | "cadence_lock";
+
+/** One flagged [start_t, end_t] inclusive span. reference_confirmed is always true for
+ * contact_loss; for cadence_lock, false means this segment was flagged on the cadence
+ * correlation alone, with no reference stream to confirm it - weaker evidence, don't present it
+ * the same as a confirmed segment. */
+export interface StreamFlagSegment {
+  start_t: number;
+  end_t: number;
+  reference_confirmed: boolean;
+}
+
+/** GET /v1/activities/{id}/streams/flags - read-only, never persisted; recomputed fresh on
+ * every call. */
+export interface StreamFlags {
+  field: StreamComparisonField;
+  kind: StreamFlagKind;
+  segments: StreamFlagSegment[];
+}
+
+/** Same shape as MergeFieldCount, for the one field a patch touches - kept_original/
+ * dropouts_nulled are always 0 here (a patch always applies; dropout masking is a merge/attach
+ * concept, not a patch one), kept only for shape parity with the merge counts. */
+export interface StreamPatchFieldCount {
+  copied: number;
+  kept_original: number;
+  nulled: number;
+  dropouts_nulled: number;
+}
+
+/** POST /v1/activities/{id}/streams/patch. */
+export interface StreamPatchResult {
+  /** Null for a preview - nothing was created. */
+  patch_id: string | null;
+  field: StreamComparisonField;
+  from_source: string;
+  /** Echoes the request's kind when segments="flagged" was used; null for explicit segments. */
+  detected_kind: StreamFlagKind | null;
+  /** The segments actually applied - always echoed back (not just a count), so a preview and
+   * its later commit can never silently diverge if the underlying data changes between the
+   * two. */
+  segments: [number, number][];
+  counts: StreamPatchFieldCount;
+}
+
+/** POST /v1/activities/{id}/streams/unpatch. */
+export interface StreamUnpatchResult {
+  patch_id: string;
+  undone_at: string;
+}
+
 /** Issue #540 phase 5. One activity's agreement between two device-class tags - bias is the
  * mean of (device_b - device_a) per overlapping second, same convention as StreamComparison. */
 export interface DeviceAgreementTrendPoint {

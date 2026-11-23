@@ -5,6 +5,7 @@ import type { Activity, ActivitySourceSummary, StreamComparisonField } from "../
 import { BlandAltmanScatter } from "./BlandAltmanScatter";
 import { StreamComparisonOverlayChart } from "./StreamComparisonOverlayChart";
 import { StreamDifferencePlot } from "./StreamDifferencePlot";
+import { StreamFlagsCard } from "./StreamFlagsCard";
 
 const ZONE_COLORS = ["var(--zone-1)", "var(--zone-2)", "var(--zone-3)", "var(--zone-4)", "var(--zone-5)"];
 
@@ -18,14 +19,17 @@ function StreamComparisonPanel({
   activityId,
   field,
   sourceB,
+  sourceBLabel,
   unit,
 }: {
   activityId: string;
   field: StreamComparisonField;
   sourceB: string;
+  sourceBLabel: string;
   unit: string;
 }) {
   const [excludeDropouts, setExcludeDropouts] = useState(true);
+  const [highlightRanges, setHighlightRanges] = useState<[number, number][]>([]);
   const comparisonQuery = useQuery({
     queryKey: ["stream-comparison", activityId, field, "primary", sourceB, excludeDropouts],
     queryFn: () => getStreamComparison(activityId, field, "primary", sourceB, field !== "cadence", excludeDropouts),
@@ -82,11 +86,25 @@ function StreamComparisonPanel({
         )}
       </div>
 
-      <StreamComparisonOverlayChart points={result.points} unit={unit} labelA="primary" labelB="attached" />
+      <StreamComparisonOverlayChart
+        points={result.points}
+        unit={unit}
+        labelA="primary"
+        labelB="attached"
+        highlightRanges={highlightRanges}
+      />
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 14 }}>
         <StreamDifferencePlot points={result.points} unit={unit} />
         <BlandAltmanScatter points={result.points} stats={stats} unit={unit} />
       </div>
+
+      <StreamFlagsCard
+        activityId={activityId}
+        field={field}
+        referenceSourceId={sourceB}
+        referenceLabel={sourceBLabel}
+        onSegmentsChange={setHighlightRanges}
+      />
 
       {result.zone_breakdown && result.zone_breakdown.length > 0 && (
         <div style={{ marginTop: 14 }}>
@@ -178,7 +196,15 @@ function FieldSourcesCard({
           </button>
         </div>
       ))}
-      {compareWith && <StreamComparisonPanel activityId={activityId} field={field} sourceB={compareWith} unit={unit} />}
+      {compareWith && (
+        <StreamComparisonPanel
+          activityId={activityId}
+          field={field}
+          sourceB={compareWith}
+          sourceBLabel={sources.find((s) => s.id === compareWith)?.label ?? "source"}
+          unit={unit}
+        />
+      )}
     </div>
   );
 }
