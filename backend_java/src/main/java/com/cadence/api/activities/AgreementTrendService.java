@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import com.cadence.api.activities.calc.StreamComparisonCalculator;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.ValidationException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -45,6 +46,13 @@ public class AgreementTrendService {
 	// The real training sports an optional sport filter may name for heartrate/cadence - same list
 	// FitnessTrendTools' get_fitness_trend validates against.
 	private static final List<String> VALID_FILTER_SPORTS = List.of("bike", "run", "swim", "walk", "row");
+
+	// One batch of sources/streams/records queries per ACTIVITY_BATCH_SIZE activities instead of
+	// one per activity (true of Python's own prefetch_related too, but unbounded there since it
+	// batches the whole queryset at once) - same OOM rationale and chunk size as
+	// ThresholdHistoryCalculator.RECORD_BATCH_SIZE, which found that batching *everything* in one
+	// shot traded the per-activity query-fanout cost for an unbounded batch-memory one instead.
+	private static final int ACTIVITY_BATCH_SIZE = 20;
 
 	private final ActivityRepository activityRepository;
 	private final ActivitySourceService sourceService;
@@ -141,49 +149,85 @@ public class AgreementTrendService {
 		skipped.put("no_device_b", 0);
 		skipped.put("insufficient_overlap", 0);
 
-		for (Activity activity : activities) {
-			// Load this activity's stored sources + streams once so both device tags resolve in
-			// memory (mirrors backend's prefetched sources__streams) instead of re-querying per tag.
-			ActivitySourceService.TaggedSeriesLookup lookup = sourceService.loadTaggedSeriesLookup(activity);
-			Map<Integer, Integer> seriesA = sourceService.resolveTaggedSeries(activity, field, deviceA, lookup);
-			if (seriesA == null) {
-				skipped.merge("no_device_a", 1, Integer::sum);
-				continue;
-			}
-			Map<Integer, Integer> seriesB = sourceService.resolveTaggedSeries(activity, field, deviceB, lookup);
-			if (seriesB == null) {
-				skipped.merge("no_device_b", 1, Integer::sum);
-				continue;
-			}
+		// activities is startDate-ordered (findForAgreementTrend's own "order by a.startDate"), so
+		// each chunk's first/last give its own span cheaply - see batchedRecordsFor's own Javadoc
+		// below for the padding rationale.
+		for (List<Activity> chunk : chunked(activities)) {
+			Map<String, ActivitySourceService.TaggedSeriesLookup> lookups = sourceService.loadTaggedSeriesLookups(chunk);
+			Map<String, ActivitySourceService.PrimarySeriesLookup> primarySeriesByActivity = batchedPrimarySeriesFor(chunk);
 
-			Map<Integer, Integer> compareSeriesA = seriesA;
-			Map<Integer, Integer> compareSeriesB = seriesB;
-			int dropoutSecondsA = 0;
-			int dropoutSecondsB = 0;
-			if (field.equals("power")) {
-				ActivitySourceService.PowerDropoutExclusion exclusion = sourceService.applyPowerDropoutExclusion(activity,
-						seriesA, seriesB, excludeDropouts);
-				compareSeriesA = exclusion.compareSeriesA();
-				compareSeriesB = exclusion.compareSeriesB();
-				dropoutSecondsA = exclusion.dropoutSecondsA().size();
-				dropoutSecondsB = exclusion.dropoutSecondsB().size();
-			}
+			for (Activity activity : chunk) {
+				ActivitySourceService.TaggedSeriesLookup lookup = lookups.get(activity.getId());
+				ActivitySourceService.PrimarySeriesLookup primarySeries = primarySeriesByActivity.get(activity.getId());
+				Map<Integer, Integer> seriesA = sourceService.resolveTaggedSeries(activity, field, deviceA, lookup,
+						primarySeries);
+				if (seriesA == null) {
+					skipped.merge("no_device_a", 1, Integer::sum);
+					continue;
+				}
+				Map<Integer, Integer> seriesB = sourceService.resolveTaggedSeries(activity, field, deviceB, lookup,
+						primarySeries);
+				if (seriesB == null) {
+					skipped.merge("no_device_b", 1, Integer::sum);
+					continue;
+				}
 
-			StreamComparisonCalculator.ComparisonResult comparison = StreamComparisonCalculator.compare(compareSeriesA,
-					compareSeriesB, tolerance);
-			if (comparison == null) {
-				skipped.merge("insufficient_overlap", 1, Integer::sum);
-				continue;
-			}
-			StreamComparisonCalculator.LagResult lag = StreamComparisonCalculator.findLag(compareSeriesA, compareSeriesB);
+				Map<Integer, Integer> compareSeriesA = seriesA;
+				Map<Integer, Integer> compareSeriesB = seriesB;
+				int dropoutSecondsA = 0;
+				int dropoutSecondsB = 0;
+				if (field.equals("power")) {
+					ActivitySourceService.PowerDropoutExclusion exclusion = sourceService.applyPowerDropoutExclusion(
+							activity, seriesA, seriesB, excludeDropouts, primarySeries);
+					compareSeriesA = exclusion.compareSeriesA();
+					compareSeriesB = exclusion.compareSeriesB();
+					dropoutSecondsA = exclusion.dropoutSecondsA().size();
+					dropoutSecondsB = exclusion.dropoutSecondsB().size();
+				}
 
-			points.add(new AgreementTrendPoint(activity.getId(), activity.getName(),
-					activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), comparison.overlapSeconds(),
-					comparison.bias(), comparison.mae(), comparison.rmse(), comparison.pearsonR(),
-					comparison.withinTolerancePct(), lag == null ? null : lag.lagSeconds(), dropoutSecondsA,
-					dropoutSecondsB));
+				StreamComparisonCalculator.ComparisonResult comparison = StreamComparisonCalculator.compare(compareSeriesA,
+						compareSeriesB, tolerance);
+				if (comparison == null) {
+					skipped.merge("insufficient_overlap", 1, Integer::sum);
+					continue;
+				}
+				StreamComparisonCalculator.LagResult lag = StreamComparisonCalculator.findLag(compareSeriesA, compareSeriesB);
+
+				points.add(new AgreementTrendPoint(activity.getId(), activity.getName(),
+						activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate(), comparison.overlapSeconds(),
+						comparison.bias(), comparison.mae(), comparison.rmse(), comparison.pearsonR(),
+						comparison.withinTolerancePct(), lag == null ? null : lag.lagSeconds(), dropoutSecondsA,
+						dropoutSecondsB));
+			}
 		}
 
 		return new AgreementTrendResult(points, skipped);
+	}
+
+	private static List<List<Activity>> chunked(List<Activity> activities) {
+		List<List<Activity>> chunks = new ArrayList<>();
+		for (int i = 0; i < activities.size(); i += ACTIVITY_BATCH_SIZE) {
+			chunks.add(activities.subList(i, Math.min(i + ACTIVITY_BATCH_SIZE, activities.size())));
+		}
+		return chunks;
+	}
+
+	/** One query for every activity in `chunk`'s primary power/heartrate/cadence series, instead
+	 * of one per activity - see {@link ActivitySourceService#loadPrimarySeriesLookups}. `chunk`
+	 * should be one of {@link #chunked}'s pieces, not a whole request's activities at once - the
+	 * ts bound is derived from the chunk's own (startDate-ordered) activities, both to keep
+	 * partition pruning tight and to bound how many activities' records are held in memory at
+	 * once (see {@link ActivityRepository#findForAgreementTrend}, {@link
+	 * com.cadence.api.athletes.ThresholdHistoryCalculator#batchedRecordsFor} for the same
+	 * convention over a different field set). */
+	private Map<String, ActivitySourceService.PrimarySeriesLookup> batchedPrimarySeriesFor(List<Activity> chunk) {
+		if (chunk.isEmpty()) {
+			return Map.of();
+		}
+		// chunk is startDate-ordered, so the first/last give its span cheaply - minusDays(1)/
+		// plusDays(2) comfortably covers any single activity's own duration on either edge.
+		Instant chunkStart = chunk.get(0).getStartDate().minus(Duration.ofDays(1));
+		Instant chunkEnd = chunk.get(chunk.size() - 1).getStartDate().plus(Duration.ofDays(2));
+		return sourceService.loadPrimarySeriesLookups(chunk, chunkStart, chunkEnd);
 	}
 }

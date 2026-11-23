@@ -79,6 +79,30 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 	List<PowerTimeDistanceRow> findPowerTimeDistanceByActivityIdInAndTsBetween(
 			@Param("activityIds") List<String> activityIds, @Param("tsStart") Instant tsStart, @Param("tsEnd") Instant tsEnd);
 
+	/** Just (t, power, heartrate, cadence) for every activity in `activityIds` at once, scoped by
+	 * [tsStart, tsEnd) - AgreementTrendService's batched equivalent of
+	 * findPowerTimeDistanceByActivityIdInAndTsBetween above (see its own Javadoc for why a
+	 * per-activity query doesn't scale here). Fetches all three fields regardless of which one a
+	 * given trend call actually needs - cheap scalar columns, simpler than three separate
+	 * queries. See ActivitySourceService#loadPrimarySeriesLookups. */
+	interface PrimarySeriesRow {
+		String getActivityId();
+
+		int getT();
+
+		Integer getPower();
+
+		Integer getHeartrate();
+
+		Integer getCadence();
+	}
+
+	@Query("select r.id.activityId as activityId, r.t as t, r.power as power, r.heartrate as heartrate, "
+			+ "r.cadence as cadence from Record r where r.id.activityId in :activityIds "
+			+ "and r.id.ts >= :tsStart and r.id.ts < :tsEnd order by r.id.activityId, r.t")
+	List<PrimarySeriesRow> findPrimarySeriesByActivityIdInAndTsBetween(
+			@Param("activityIds") List<String> activityIds, @Param("tsStart") Instant tsStart, @Param("tsEnd") Instant tsEnd);
+
 	/** Just (power, heartrate), as scalars - ActivityIntensityHistogramService's lazy-backfill
 	 * path builds an activity's intensity histogram from these without loading whole Record
 	 * entities (see TimeDistance). */

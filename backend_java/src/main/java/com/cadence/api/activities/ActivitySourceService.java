@@ -768,6 +768,26 @@ public class ActivitySourceService {
 		// guessing off cadence.
 		Map<Integer, Integer> cadenceSeries = (referenceForA == null || referenceForB == null)
 				&& activity.getSport() != Sport.RUN ? loadFieldSeries(activity, "cadence", PRIMARY_SOURCE_REF) : null;
+		return detectPowerDropouts(seriesA, seriesB, referenceForA, referenceForB, cadenceSeries);
+	}
+
+	/** {@link #detectPowerDropouts(Activity, Map, Map)}, but taking the activity's own primary
+	 * cadence series already resolved (e.g. from a batched {@link PrimarySeriesLookup} covering a
+	 * whole chunk of activities) instead of querying it here - used by {@link
+	 * AgreementTrendService#computeAgreementTrend}, which needs that series batched across many
+	 * activities, not one query per activity. Package-visible for that class. */
+	PowerDropouts detectPowerDropouts(Activity activity, Map<Integer, Integer> seriesA, Map<Integer, Integer> seriesB,
+			PrimarySeriesLookup primarySeries) {
+		Map<Integer, Integer> referenceForA = DropoutDetector.buildReference(seriesB, 0, seriesA.keySet());
+		Map<Integer, Integer> referenceForB = DropoutDetector.buildReference(seriesA, 0, seriesB.keySet());
+		Map<Integer, Integer> cadenceSeries = (referenceForA == null || referenceForB == null)
+				&& activity.getSport() != Sport.RUN ? primarySeries.cadence() : null;
+		return detectPowerDropouts(seriesA, seriesB, referenceForA, referenceForB, cadenceSeries);
+	}
+
+	private static PowerDropouts detectPowerDropouts(Map<Integer, Integer> seriesA, Map<Integer, Integer> seriesB,
+			Map<Integer, Integer> referenceForA, Map<Integer, Integer> referenceForB,
+			Map<Integer, Integer> cadenceSeries) {
 		DropoutDetector.DropoutResult resultA = DropoutDetector.detectDropouts(seriesA, referenceForA, cadenceSeries);
 		DropoutDetector.DropoutResult resultB = DropoutDetector.detectDropouts(seriesB, referenceForB, cadenceSeries);
 		return new PowerDropouts(resultA.dropoutTs(), resultA.runs(), resultB.dropoutTs(), resultB.runs());
@@ -778,15 +798,27 @@ public class ActivitySourceService {
 			Set<Integer> dropoutSecondsB, List<DropoutDetector.DropoutRun> dropoutRunsB) {
 	}
 
-	/** Issue #541/#540: runs {@link #detectPowerDropouts}, then - when {@code excludeDropouts} -
-	 * filters both series down to the seconds neither side dropped out on. Shared by {@link
-	 * #compareStreams} and {@link AgreementTrendService#computeAgreementTrend} (both
-	 * field="power" only) so this exact detect-union-filter rule can't drift between the two call
-	 * sites. Package-visible for {@link AgreementTrendService}. Mirrors backend's
-	 * activity_source_service._apply_power_dropout_exclusion. */
+	/** Issue #541/#540: runs {@link #detectPowerDropouts(Activity, Map, Map)}, then - when {@code
+	 * excludeDropouts} - filters both series down to the seconds neither side dropped out on.
+	 * Used by {@link #compareStreams}, which processes one activity at a time (no batching to
+	 * share). Mirrors backend's activity_source_service._apply_power_dropout_exclusion. */
 	PowerDropoutExclusion applyPowerDropoutExclusion(Activity activity, Map<Integer, Integer> seriesA,
 			Map<Integer, Integer> seriesB, boolean excludeDropouts) {
-		PowerDropouts dropouts = detectPowerDropouts(activity, seriesA, seriesB);
+		return applyPowerDropoutExclusion(seriesA, seriesB, excludeDropouts, detectPowerDropouts(activity, seriesA, seriesB));
+	}
+
+	/** {@link #applyPowerDropoutExclusion(Activity, Map, Map, boolean)}, but taking the activity's
+	 * own primary cadence series already resolved (e.g. from a batched {@link
+	 * PrimarySeriesLookup}) instead of querying it here - used by {@link
+	 * AgreementTrendService#computeAgreementTrend}. Package-visible for that class. */
+	PowerDropoutExclusion applyPowerDropoutExclusion(Activity activity, Map<Integer, Integer> seriesA,
+			Map<Integer, Integer> seriesB, boolean excludeDropouts, PrimarySeriesLookup primarySeries) {
+		return applyPowerDropoutExclusion(seriesA, seriesB, excludeDropouts,
+				detectPowerDropouts(activity, seriesA, seriesB, primarySeries));
+	}
+
+	private static PowerDropoutExclusion applyPowerDropoutExclusion(Map<Integer, Integer> seriesA,
+			Map<Integer, Integer> seriesB, boolean excludeDropouts, PowerDropouts dropouts) {
 		Map<Integer, Integer> compareSeriesA = seriesA;
 		Map<Integer, Integer> compareSeriesB = seriesB;
 		if (excludeDropouts) {
@@ -895,30 +927,99 @@ public class ActivitySourceService {
 		}
 	}
 
-	/** Loads {@link TaggedSeriesLookup} for one activity - its stored sources in created_at order
-	 * plus every stream (each with its source fetched, so the id is readable after this query's
-	 * short transaction ends). Two queries total - the same two backend's prefetch_related issues. */
-	public TaggedSeriesLookup loadTaggedSeriesLookup(Activity activity) {
-		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId());
-		Map<String, Map<String, ActivityStream>> streamsBySource = new HashMap<>();
-		for (ActivityStream stream : streamRepository.findForTrendByActivityId(activity.getId())) {
-			streamsBySource.computeIfAbsent(stream.getSource().getId(), k -> new HashMap<>()).put(stream.getField(),
-					stream);
+	/** Batched {@link TaggedSeriesLookup} for a whole chunk of activities at once - two queries
+	 * total for the chunk (mirrors backend's prefetch_related("sources__streams") over its own
+	 * queryset) instead of two per activity. Callers chunk `activities` themselves (see
+	 * AgreementTrendService.ACTIVITY_BATCH_SIZE) to keep this bounded on a long date range. */
+	public Map<String, TaggedSeriesLookup> loadTaggedSeriesLookups(List<Activity> activities) {
+		if (activities.isEmpty()) {
+			return Map.of();
 		}
-		return new TaggedSeriesLookup(sources, streamsBySource);
+		List<String> activityIds = activities.stream().map(Activity::getId).toList();
+		Map<String, List<ActivitySource>> sourcesByActivity = sourceRepository
+				.findByActivityIdInOrderByCreatedAtAscIdAsc(activityIds).stream()
+				.collect(Collectors.groupingBy(source -> source.getActivity().getId()));
+		Map<String, Map<String, Map<String, ActivityStream>>> streamsByActivity = new HashMap<>();
+		for (ActivityStream stream : streamRepository.findForTrendByActivityIdIn(activityIds)) {
+			streamsByActivity.computeIfAbsent(stream.getActivity().getId(), k -> new HashMap<>())
+					.computeIfAbsent(stream.getSource().getId(), k -> new HashMap<>())
+					.put(stream.getField(), stream);
+		}
+		Map<String, TaggedSeriesLookup> lookups = new HashMap<>();
+		for (Activity activity : activities) {
+			lookups.put(activity.getId(), new TaggedSeriesLookup(
+					sourcesByActivity.getOrDefault(activity.getId(), List.of()),
+					streamsByActivity.getOrDefault(activity.getId(), Map.of())));
+		}
+		return lookups;
+	}
+
+	/** An activity's primary (Record-backed) power/heartrate/cadence series, loaded for a whole
+	 * chunk of activities at once - see {@link #loadPrimarySeriesLookups}. Carries all three
+	 * fields regardless of which one a given trend call needs (cheap scalar columns, simpler than
+	 * three separate per-field batches). */
+	public record PrimarySeriesLookup(Map<Integer, Integer> power, Map<Integer, Integer> heartrate,
+			Map<Integer, Integer> cadence) {
+
+		Map<Integer, Integer> seriesFor(String field) {
+			return switch (field) {
+				case "power" -> power;
+				case "heartrate" -> heartrate;
+				case "cadence" -> cadence;
+				default -> throw new IllegalArgumentException("Unknown field: " + field);
+			};
+		}
+	}
+
+	/** Batched primary series for a whole chunk of activities at once - one query, bounded by
+	 * [tsStart, tsEnd) for partition pruning (same rationale as {@link
+	 * RecordRepository#findPowerTimeDistanceByActivityIdInAndTsBetween}'s own Javadoc), instead of
+	 * one query per activity per field. Callers chunk `activities` themselves and derive
+	 * tsStart/tsEnd from the chunk's own span - see AgreementTrendService.ACTIVITY_BATCH_SIZE and
+	 * ThresholdHistoryCalculator#batchedRecordsFor for the established padding convention. */
+	public Map<String, PrimarySeriesLookup> loadPrimarySeriesLookups(List<Activity> activities, Instant tsStart,
+			Instant tsEnd) {
+		if (activities.isEmpty()) {
+			return Map.of();
+		}
+		List<String> activityIds = activities.stream().map(Activity::getId).toList();
+		Map<String, List<RecordRepository.PrimarySeriesRow>> rowsByActivity = recordRepository
+				.findPrimarySeriesByActivityIdInAndTsBetween(activityIds, tsStart, tsEnd).stream()
+				.collect(Collectors.groupingBy(RecordRepository.PrimarySeriesRow::getActivityId));
+		Map<String, PrimarySeriesLookup> lookups = new HashMap<>();
+		for (Activity activity : activities) {
+			Map<Integer, Integer> power = new HashMap<>();
+			Map<Integer, Integer> heartrate = new HashMap<>();
+			Map<Integer, Integer> cadence = new HashMap<>();
+			for (RecordRepository.PrimarySeriesRow row : rowsByActivity.getOrDefault(activity.getId(), List.of())) {
+				if (row.getPower() != null) {
+					power.put(row.getT(), row.getPower());
+				}
+				if (row.getHeartrate() != null) {
+					heartrate.put(row.getT(), row.getHeartrate());
+				}
+				if (row.getCadence() != null) {
+					cadence.put(row.getT(), row.getCadence());
+				}
+			}
+			lookups.put(activity.getId(), new PrimarySeriesLookup(power, heartrate, cadence));
+		}
+		return lookups;
 	}
 
 	/** Issue #540 (phase 5): resolves a device-class tag to this activity's series for
-	 * {@code field} from pre-loaded {@code lookup} data - the primary ({@link Record}) when the
-	 * tag matches the activity's current primary classification, else the most recently created
-	 * stored {@link ActivitySource} whose stream carries the tag (the schema allows more than one;
-	 * practice shouldn't produce it - a judgment call, flagged in the PR). {@code null} when
-	 * nothing matches: "this device wasn't used that day" is the expected common case across a
-	 * date range, so callers skip rather than error. Package-visible for {@link
-	 * AgreementTrendService} - mirrors backend's activity_source_service._resolve_tagged_series. */
-	Map<Integer, Integer> resolveTaggedSeries(Activity activity, String field, String tag, TaggedSeriesLookup lookup) {
+	 * {@code field} from pre-loaded {@code lookup}/{@code primarySeries} data - the primary (from
+	 * {@code primarySeries}) when the tag matches the activity's current primary classification,
+	 * else the most recently created stored {@link ActivitySource} whose stream carries the tag
+	 * (the schema allows more than one; practice shouldn't produce it - a judgment call, flagged
+	 * in the PR). {@code null} when nothing matches: "this device wasn't used that day" is the
+	 * expected common case across a date range, so callers skip rather than error.
+	 * Package-visible for {@link AgreementTrendService} - mirrors backend's
+	 * activity_source_service._resolve_tagged_series. */
+	Map<Integer, Integer> resolveTaggedSeries(Activity activity, String field, String tag, TaggedSeriesLookup lookup,
+			PrimarySeriesLookup primarySeries) {
 		if (primaryTagForField(activity, field).equals(tag)) {
-			return loadFieldSeries(activity, field, PRIMARY_SOURCE_REF);
+			return primarySeries.seriesFor(field);
 		}
 		List<ActivitySource> candidates = lookup.sources().stream()
 				.filter(source -> sourceMatchesTag(source, field, tag, activity)).toList();
