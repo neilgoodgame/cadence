@@ -12,6 +12,7 @@ from django.utils.dateparse import parse_date
 from rest_framework.exceptions import ValidationError
 
 from accounts.models import User
+from activities.agreement_trend_service import agreement_trend_response, compute_agreement_trend
 from activities.models import Activity, BestEffort
 from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
@@ -283,6 +284,57 @@ class AthleteMCPTools(ScopedMCPToolset):
         return {
             "data": [{"date": p["date"].isoformat(), "ctl": p["ctl"], "atl": p["atl"], "tsb": p["tsb"]} for p in series]
         }
+
+    def stream_agreement_trend(
+        self,
+        field: str,
+        device_a: str,
+        device_b: str,
+        sport: str | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        exclude_dropouts: bool = True,
+        include_duplicates: bool = False,
+    ) -> dict[str, Any]:
+        """Issue #540 (phase 5): per-activity agreement statistics between two device-class tags
+        for one field, across the athlete's activities in a date range (default trailing 84 days)
+        - e.g. 'how has my pedal power vs trainer power bias drifted over the last few months'.
+        device_a/device_b are device-class tags, not source ids: power+bike is 'trainer' or
+        'pedals'; power+run is 'native' or 'stryd'; heartrate is 'strap' or 'wrist'; cadence is
+        'pedals', 'trainer', or 'watch'. sport is required when field='power' ('bike' or 'run');
+        optional otherwise (filters which activities are included). Each activity contributes one
+        point when both tags resolve to a stream with at least 30 overlapping seconds; activities
+        where a tag has no matching stream are skipped and tallied in `skipped` (no_device_a /
+        no_device_b / insufficient_overlap) rather than erroring - 'this device wasn't used that
+        day' is the expected common case across a date range. For field='power', exclude_dropouts
+        (default true) excludes confirmed power-meter dropout seconds from the statistics, same as
+        compare_streams. include_duplicates (default false) also includes same-ride-twice
+        duplicate copies, which are otherwise excluded entirely (issue #498)."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+
+        to_d = parse_date(to_date) if to_date else timezone.now().date()
+        if to_d is None:
+            raise ValidationError({"to_date": "Must be a date in YYYY-MM-DD format."})
+        from_d = parse_date(from_date) if from_date else to_d - timedelta(days=DEFAULT_FITNESS_WINDOW_DAYS)
+        if from_d is None:
+            raise ValidationError({"from_date": "Must be a date in YYYY-MM-DD format."})
+        if from_d > to_d:
+            raise ValidationError({"from_date": "Must not be after to_date."})
+
+        points, skipped = compute_agreement_trend(
+            athlete_id,
+            field,
+            device_a,
+            device_b,
+            sport,
+            from_d,
+            to_d,
+            exclude_dropouts=exclude_dropouts,
+            include_duplicates=include_duplicates,
+        )
+        return agreement_trend_response(field, device_a, device_b, sport, from_d, to_d, points, skipped)
 
     def list_threshold_history(
         self, field: str, from_date: str | None = None, to_date: str | None = None

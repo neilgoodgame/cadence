@@ -70,7 +70,7 @@ public class FitnessTrendTools {
 			throw new ValidationException("sport must be 'bike' (or omitted) when intensity is given.", "sport");
 		}
 		LocalDate effectiveTo = to != null ? to : LocalDate.now();
-		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(84);
+		LocalDate effectiveFrom = from != null ? from : effectiveTo.minusDays(FitnessService.DEFAULT_FITNESS_WINDOW_DAYS);
 		boolean effectiveIncludeDuplicates = Boolean.TRUE.equals(includeDuplicates);
 		if ("above_z2".equals(intensity)) {
 			return fitnessService.computeAboveZ2FitnessSeries(

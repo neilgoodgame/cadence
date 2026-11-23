@@ -41,6 +41,17 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start,
 			@Param("end") Instant end, @Param("includeDuplicates") boolean includeDuplicates);
 
+	// Issue #540 (phase 5): AgreementTrendService's candidate pool - same multisport-child/
+	// duplicate exclusion as findForSportRange above, but the sport filter is optional (a
+	// heartrate/cadence trend spans every sport unless the caller narrows one).
+	@Query("select a from Activity a where a.athlete.id = :athleteId "
+			+ "and a.startDate >= :start and a.startDate < :end and a.parentActivity is null "
+			+ "and (:sport is null or a.sport = :sport) "
+			+ "and (:includeDuplicates = true or a.primaryActivity is null) order by a.startDate")
+	List<Activity> findForAgreementTrend(@Param("athleteId") String athleteId,
+			@Param("sport") com.cadence.api.common.domain.Sport sport, @Param("start") Instant start,
+			@Param("end") Instant end, @Param("includeDuplicates") boolean includeDuplicates);
+
 	@Query("select min(a.startDate) from Activity a where a.athlete.id = :athleteId")
 	Optional<Instant> findEarliestStartDate(@Param("athleteId") String athleteId);
 

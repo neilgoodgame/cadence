@@ -290,7 +290,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		assertThat(reloadedAfterSwap.getBikePowerSource()).isEqualTo(BikePowerSource.TRAINER);
 
 		// The original ("Edge 530", 200) primary was itself snapshotted as a new source, not lost.
-		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId());
+		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId());
 		ActivitySource originalSnapshot = sources.stream()
 				.filter(s -> s.getOrigin() == ActivitySourceOrigin.FILE)
 				.findFirst().orElseThrow();
@@ -345,7 +345,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		assertThat(reloaded.getBikePowerSource()).isEqualTo(BikePowerSource.PEDALS);
 		// Only the original demoted snapshot remains - the redundant one the swap-back itself
 		// created (a duplicate of the just-deleted attach's own data) was cleaned up too.
-		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())).hasSize(1);
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId())).hasSize(1);
 	}
 
 	/** Issue #542: a source promoted via a direct setPrimarySource call (not an attach merge) has
@@ -367,7 +367,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		assertThat(neededRestore).isTrue();
 		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
 				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(200));
-		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())).hasSize(1);
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId())).hasSize(1);
 	}
 
 	@Test
@@ -379,7 +379,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(source, 10, 300);
 		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
-		ActivitySource fileOriginSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())
+		ActivitySource fileOriginSource = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId())
 				.stream().filter(s -> s.getOrigin() == ActivitySourceOrigin.FILE).findFirst().orElseThrow();
 
 		assertThatThrownBy(() -> sourceService.detachAndRestore(target.getId(), "power", fileOriginSource.getId(), null))
@@ -435,7 +435,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(source, 10, 300);
 		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
-		int sourceCountBefore = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId()).size();
+		int sourceCountBefore = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId()).size();
 
 		boolean needsRestore;
 		try {
@@ -449,7 +449,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		assertThat(needsRestore).isTrue();
 		assertThat(sourceRepository.findById(attach.sourceId())).isPresent();
-		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())).hasSize(sourceCountBefore);
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId())).hasSize(sourceCountBefore);
 		assertThat(recordRepository.findByActivityIdOrderByT(target.getId()))
 				.allSatisfy(r -> assertThat(r.getPower()).isEqualTo(300)); // unchanged - the attach is still primary
 	}
@@ -463,7 +463,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(source, 10, 300);
 		ActivitySourceService.AttachResult attach = sourceService.attachStream(target.getId(), source.getId(), "power", 0, false, null);
 		sourceService.setPrimarySource(target.getId(), "power", attach.sourceId());
-		ActivitySource fileOriginSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())
+		ActivitySource fileOriginSource = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId())
 				.stream().filter(s -> s.getOrigin() == ActivitySourceOrigin.FILE).findFirst().orElseThrow();
 
 		assertThatThrownBy(() -> sourceService.detachSource(target.getId(), fileOriginSource.getId(), false))
@@ -505,7 +505,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		sourceService.createParseTimeRunningPowerSource(activity, tSeries, otherValues, RunningPowerSource.NATIVE);
 
-		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId());
+		List<ActivitySource> sources = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId());
 		assertThat(sources).hasSize(1);
 		ActivitySource source = sources.get(0);
 		assertThat(source.getOrigin()).isEqualTo(ActivitySourceOrigin.FILE);
@@ -533,7 +533,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		sourceService.createParseTimeRunningPowerSource(activity, tSeries, otherValues, RunningPowerSource.NATIVE);
 
-		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId())).isEmpty();
+		assertThat(sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId())).isEmpty();
 	}
 
 	@Test
@@ -543,7 +543,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(activity, 5, 200); // Stryd primary
 		sourceService.createParseTimeRunningPowerSource(activity, List.of(0, 1, 2, 3, 4),
 				List.of(250, 251, 252, 253, 254), RunningPowerSource.NATIVE);
-		ActivitySource nativeSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).get(0);
+		ActivitySource nativeSource = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId()).get(0);
 
 		sourceService.setPrimarySource(activity.getId(), "power", nativeSource.getId());
 
@@ -554,7 +554,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 
 		// The original (Stryd, 200) primary was itself snapshotted as a new source, tagged with
 		// its own running-power kind - not left blank/device-classified the way bike's is.
-		ActivitySource strydSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).stream()
+		ActivitySource strydSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId()).stream()
 				.filter(s -> !s.getId().equals(nativeSource.getId()))
 				.findFirst().orElseThrow();
 		assertThat(strydSnapshot.getSourceKind()).isEqualTo("stryd");
@@ -574,7 +574,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		addRecords(activity, 5, 200);
 		sourceService.createParseTimeRunningPowerSource(activity, List.of(0, 1, 2, 3, 4),
 				List.of(250, 251, 252, 253, 254), RunningPowerSource.NATIVE);
-		ActivitySource nativeSource = sourceRepository.findByActivityIdOrderByCreatedAtAsc(activity.getId()).get(0);
+		ActivitySource nativeSource = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(activity.getId()).get(0);
 
 		List<ActivitySourceService.SourceSummary> summaries = sourceService.listSources(activity.getId());
 		assertThat(summaries).hasSize(1);
@@ -679,7 +679,7 @@ class ActivitySourceServiceIntegrationTest extends IntegrationTest {
 		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
 		assertThat(reloaded.getHrSource()).isEqualTo(HrSource.STRAP);
 
-		ActivitySource originalSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAsc(target.getId())
+		ActivitySource originalSnapshot = sourceRepository.findByActivityIdOrderByCreatedAtAscIdAsc(target.getId())
 				.stream().filter(s -> !s.getId().equals(attach.sourceId())).findFirst().orElseThrow();
 		assertThat(originalSnapshot.getSourceKind()).isNull(); // never tagged - it was the original primary
 
