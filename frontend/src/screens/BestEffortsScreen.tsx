@@ -39,6 +39,12 @@ const PERIOD_CONFIG: Record<DisplayPeriod, { apiPeriod: BestEffortPeriod; label:
 };
 const DISPLAY_PERIODS: DisplayPeriod[] = ["4w", "16w", "1y", "all"];
 
+// Per-kind retention (issue #597) can now keep an unlimited number of rows per window (pace
+// defaults to unlimited; power can be set to unlimited too) - that's a database/recompute
+// concern, not a reason to render an unbounded table here. Cap what's shown per window
+// independently of retention.
+const MAX_ROWS_PER_WINDOW = 10;
+
 /** True only for the #1 all-time effort for a given window. */
 function isPR(effort: BestEffort, allTimeEfforts: BestEffort[], lowerIsBetter: boolean): boolean {
   const windowBests = allTimeEfforts.filter((e) => e.window === effort.window);
@@ -219,6 +225,15 @@ function EmptyRow({ msg }: { msg: string }) {
   return <div style={{ padding: "20px 18px", color: "var(--ink3)", fontSize: 13 }}>{msg}</div>;
 }
 
+function MoreRowsNote({ hiddenCount }: { hiddenCount: number }) {
+  if (hiddenCount <= 0) return null;
+  return (
+    <div style={{ padding: "10px 18px", color: "var(--ink3)", fontSize: 12, fontStyle: "italic" }}>
+      +{hiddenCount} more not shown
+    </div>
+  );
+}
+
 function ExcludeButton({ onExclude, pending }: { onExclude: () => void; pending: boolean }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -313,7 +328,8 @@ function RunHrCard({
   // Deliberately never falls back to allTimeEfforts when the period has nothing for the
   // selected window - that silently showed activities from outside the chosen period (e.g.
   // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
-  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEffortsAll = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEfforts = windowEffortsAll.slice(0, MAX_ROWS_PER_WINDOW);
 
   return (
     <CardShell
@@ -332,6 +348,7 @@ function RunHrCard({
           <RunHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
+      <MoreRowsNote hiddenCount={windowEffortsAll.length - windowEfforts.length} />
     </CardShell>
   );
 }
@@ -399,7 +416,8 @@ function BikeHrCard({
   // Deliberately never falls back to allTimeEfforts when the period has nothing for the
   // selected window - that silently showed activities from outside the chosen period (e.g.
   // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
-  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEffortsAll = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEfforts = windowEffortsAll.slice(0, MAX_ROWS_PER_WINDOW);
 
   return (
     <CardShell
@@ -418,6 +436,7 @@ function BikeHrCard({
           <BikeHrRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
+      <MoreRowsNote hiddenCount={windowEffortsAll.length - windowEfforts.length} />
     </CardShell>
   );
 }
@@ -490,7 +509,8 @@ function RunPowerCard({
   // Deliberately never falls back to allTimeEfforts when the period has nothing for the
   // selected window - that silently showed activities from outside the chosen period (e.g.
   // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
-  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEffortsAll = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEfforts = windowEffortsAll.slice(0, MAX_ROWS_PER_WINDOW);
 
   const title = (
     <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -528,6 +548,7 @@ function RunPowerCard({
           <RunPowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
+      <MoreRowsNote hiddenCount={windowEffortsAll.length - windowEfforts.length} />
     </CardShell>
   );
 }
@@ -600,11 +621,12 @@ function RunPaceCard({
   // Deliberately never falls back to allTimeEfforts when the period has nothing for the
   // selected window - that silently showed activities from outside the chosen period (e.g.
   // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
-  const windowEfforts = useMemo(() => {
+  const windowEffortsAll = useMemo(() => {
     // pace is lower-is-better; API returns value asc for pace? No — API always returns value desc.
     // Re-sort ascending (lower = faster = better rank).
     return efforts.filter((e) => e.window === effective).sort((a, b) => a.value - b.value);
   }, [efforts, effective]);
+  const windowEfforts = windowEffortsAll.slice(0, MAX_ROWS_PER_WINDOW);
 
   return (
     <CardShell
@@ -623,6 +645,7 @@ function RunPaceCard({
           <RunPaceRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
+      <MoreRowsNote hiddenCount={windowEffortsAll.length - windowEfforts.length} />
     </CardShell>
   );
 }
@@ -710,7 +733,8 @@ function BikePowerCard({
   // Deliberately never falls back to allTimeEfforts when the period has nothing for the
   // selected window - that silently showed activities from outside the chosen period (e.g.
   // "4 weeks" rendering a PR set months ago) instead of the correct empty state.
-  const windowEfforts = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEffortsAll = useMemo(() => efforts.filter((e) => e.window === effective), [efforts, effective]);
+  const windowEfforts = windowEffortsAll.slice(0, MAX_ROWS_PER_WINDOW);
 
   return (
     <CardShell
@@ -729,6 +753,7 @@ function BikePowerCard({
           <BikePowerRow key={e.activity_id} effort={e} rank={i + 1} allTimeEfforts={allTimeEfforts} weightKg={weightKg} onExclude={onExclude} excludePending={excludePending} />
         ))
       )}
+      <MoreRowsNote hiddenCount={windowEffortsAll.length - windowEfforts.length} />
     </CardShell>
   );
 }
