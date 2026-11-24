@@ -14,7 +14,7 @@ import type {
 } from "../../api/types";
 import { formatDuration, formatPace, parseDuration } from "../../lib/format";
 import { formatGrade, SECTION_LABELS } from "../../lib/courseSections";
-import { bestEntryForWindow, formatBestEffortValue, windowLabel } from "../../lib/bestEfforts";
+import { bestEffortBelowDistance, formatBestEffortValue, windowLabel } from "../../lib/bestEfforts";
 import { splitRowLabel } from "../../lib/splits";
 import type { BlockChartMetric, BlockChartSport } from "./raceBlockChart";
 import {
@@ -170,8 +170,7 @@ function addTrainingBlockSheet(
   // than a sheet of its own - it's a detail of this block, not independent data.
   if (belowDistanceWindows.length > 0) {
     const rows = belowDistanceWindows.map((window) => {
-      const entry = bestEntryForWindow(belowDistanceEfforts, window, race.activity_id);
-      const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
+      const { entry, isRace } = bestEffortBelowDistance(belowDistanceEfforts, window, race.activity_id, allRaces);
       return bestEffortReportRow(window, entry, isRace);
     });
     addTable(sheet, BEST_EFFORT_HEADERS, rows, weekTableStart + block.weeks.length + 3);

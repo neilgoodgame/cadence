@@ -1,4 +1,4 @@
-import type { BestEffort, BestEffortKind, RecentTopEffort } from "../api/types";
+import type { BestEffort, BestEffortKind, Race, RecentTopEffort } from "../api/types";
 import { formatDuration } from "./format";
 
 /** Which family a best-effort kind belongs to, for grouping/labelling - shared by the Best
@@ -93,6 +93,26 @@ export function bestEntryForWindow(data: BestEffort[], window: string, excludeAc
     if (best == null || entry.value < best.value) best = entry;
   }
   return best;
+}
+
+export interface BestEffortBelowDistance {
+  entry: BestEffort | undefined;
+  isRace: boolean;
+}
+
+/** Issue #581: bestEntryForWindow() plus the "did this come from a race" flag, as one call -
+ * shared by TrainingBlockCard (the on-page tiles) and the download report's training block
+ * sheet so they can't drift on which entry counts as "the best effort in this block" or on
+ * which of those entries gets the race indicator. */
+export function bestEffortBelowDistance(
+  data: BestEffort[],
+  window: string,
+  excludeActivityId: string | null,
+  allRaces: Race[],
+): BestEffortBelowDistance {
+  const entry = bestEntryForWindow(data, window, excludeActivityId);
+  const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
+  return { entry, isRace };
 }
 
 /** "5 min power" / "Half marathon" - matches the Dashboard design's effortLabel(e): the metric
