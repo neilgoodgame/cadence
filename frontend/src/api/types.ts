@@ -11,6 +11,22 @@ export type FtpCalculationMethod = "twenty_min_test" | "sixty_min_direct";
  * at parse time, not used when the selected one is momentarily missing. */
 export type RunningPowerSource = "stryd" | "native";
 
+/** Which bike power reading should become primary when a Zwift/trainer and a Garmin/pedal
+ * recording of the same ride both exist as sources on an activity - consulted at attach time
+ * and as an FTP-candidate filter, not re-resolved retroactively for activities already
+ * imported. "any" (default) means no preference - attach never auto-swaps. */
+export type BikePowerSource = "pedals" | "trainer" | "any";
+
+/** Which heartrate reading should become primary when a chest strap and a wrist-optical
+ * recording of the same activity both exist as sources. Unlike BikePowerSource, there's no
+ * automatic device classification for heartrate, so this only ever matters when the athlete
+ * manually tags source_kind when attaching. "any" (default) means no preference. */
+export type HrSource = "strap" | "wrist" | "any";
+
+/** Cadence equivalent of HrSource - pedals, trainer, or watch. Same caveat: no automatic
+ * classification, only ever meaningful via a manually supplied source_kind at attach time. */
+export type CadenceSource = "pedals" | "trainer" | "watch" | "any";
+
 /** Where a matched activity's laps come from: "matched_workout" (default) derives them by
  * slicing the activity's Record stream at the workout's own step boundaries, discarding the
  * device's raw FIT-file laps; "original" leaves the device's own laps untouched. Only governs
@@ -98,6 +114,9 @@ export interface Athlete {
   best_effort_top_n_power: number | null;
   ftp_calculation_method: FtpCalculationMethod;
   running_power_source: RunningPowerSource;
+  bike_power_source: BikePowerSource;
+  hr_source: HrSource;
+  cadence_source: CadenceSource;
   is_coach: boolean;
   is_admin: boolean;
   /** When an upload auto-matches a scheduled workout, replace the activity's name with the
@@ -649,6 +668,9 @@ export interface AthleteUpdate {
   best_effort_top_n_power?: number;
   ftp_calculation_method?: FtpCalculationMethod;
   running_power_source?: RunningPowerSource;
+  bike_power_source?: BikePowerSource;
+  hr_source?: HrSource;
+  cadence_source?: CadenceSource;
   rename_matched_activities?: boolean;
   append_match_date_to_name?: boolean;
   copy_matched_workout_tags?: boolean;

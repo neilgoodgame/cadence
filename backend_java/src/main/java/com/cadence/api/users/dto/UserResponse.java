@@ -1,5 +1,6 @@
 package com.cadence.api.users.dto;
 
+import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.CadenceSource;
 import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.HrSource;
@@ -64,5 +65,9 @@ public record UserResponse(
 		// positional UserResponse(...) construction exists anywhere (same reasoning as hrSource/
 		// cadenceSource above).
 		int bestEffortTopNRunningPace,
-		Integer bestEffortTopNPower) {
+		Integer bestEffortTopNPower,
+		// Issue #539: bikePowerSource (issue #503 phase 1) was never added here - a pre-existing
+		// gap distinct from hrSource/cadenceSource above, which are phase 3. Appended at the end
+		// for the same no-positional-construction reasoning as those.
+		BikePowerSource bikePowerSource) {
 }
