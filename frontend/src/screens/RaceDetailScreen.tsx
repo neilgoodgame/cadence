@@ -126,7 +126,7 @@ export function RaceDetailScreen() {
 
       {showSplits && <SplitsCard raceId={race.id} distanceKm={race.distance_km} course={course ?? null} />}
 
-      <TrainingBlockCard race={race} block={block} allRaces={allRaces} selectedIndex={selectedWeek != null ? selectedWeek - 1 : null} onSelectIndex={(i) => setSelectedWeek(i != null ? i + 1 : null)} />
+      <TrainingBlockCard athleteId={user.id} race={race} block={block} allRaces={allRaces} selectedIndex={selectedWeek != null ? selectedWeek - 1 : null} onSelectIndex={(i) => setSelectedWeek(i != null ? i + 1 : null)} />
 
       {showDurability && <DurabilityCard athleteId={user.id} block={block} />}
 

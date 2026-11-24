@@ -66,6 +66,17 @@ export function windowToKm(window: string): number {
   return m ? parseFloat(m[1]) : 0;
 }
 
+/** The running_pace distance windows the best-efforts API tracks, ascending. */
+export const STANDARD_RUNNING_PACE_WINDOWS = ["1km", "5km", "10km", "10mile", "half_marathon", "30km", "marathon", "50km"];
+
+/** Issue #581: the standard pace windows strictly below a race's own distance - e.g. a
+ * marathon (42.195 km) returns 1km/5km/10km/10mile/half_marathon/30km. Applies the same rule
+ * regardless of whether distanceKm itself is a standard window (an 8 km fun run still returns
+ * 1km/5km). */
+export function standardWindowsBelow(distanceKm: number): string[] {
+  return STANDARD_RUNNING_PACE_WINDOWS.filter((w) => windowToKm(w) < distanceKm);
+}
+
 /** "5 min power" / "Half marathon" - matches the Dashboard design's effortLabel(e): the metric
  * alone for Distance/Elevation (their metric is already descriptive, e.g. "Longest run"), the
  * metric plus the lowercased family for everything else (Power/Pace/Heart rate), since those

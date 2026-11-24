@@ -1,6 +1,9 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import type { Race, RaceBlock, RaceBlockWeek } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
+import { listBestEfforts } from "../../api/athletes";
+import { formatBestEffortValue, standardWindowsBelow, windowLabel } from "../../lib/bestEfforts";
 import {
   SEGMENT_COLOR,
   SEGMENT_LABEL,
@@ -106,12 +109,14 @@ const TABLE_COLS = "28px 60px 48px repeat(11, minmax(44px,1fr)) minmax(100px,1.3
  * prototype). Totals tiles only make sense for a full A-race block (a B/C's 5-week window is
  * too short to read trend from), so they're gated on `race.priority === "A"`. */
 export function TrainingBlockCard({
+  athleteId,
   race,
   block,
   allRaces,
   selectedIndex,
   onSelectIndex,
 }: {
+  athleteId: string;
   race: Race;
   block: RaceBlock;
   allRaces: Race[];
@@ -174,6 +179,17 @@ export function TrainingBlockCard({
   const plannedWeeks = block.weeks.filter((w) => w.planned && !isUnscheduled(w));
   const span = inProgress ? "so far" : "over the block";
   const averages = weeklyAverages(actualWeeks.filter(({ index }) => index !== currentIndex).map(({ week }) => week));
+
+  // Issue #581: pace best efforts at the standard distances below this race's own, over the
+  // block's own window (block.start through the race date, or today if it hasn't happened
+  // yet) - running only, matching #581's scope decision.
+  const blockEndDate = race.date < todayIso ? race.date : todayIso;
+  const belowDistanceWindows = race.sport === "run" && race.distance_km != null ? standardWindowsBelow(race.distance_km) : [];
+  const { data: belowDistanceEfforts } = useQuery({
+    queryKey: ["best-efforts", athleteId, "running_pace", "range", block.start, blockEndDate],
+    queryFn: () => listBestEfforts(athleteId, "running_pace", undefined, { startDate: block.start, endDate: blockEndDate }),
+    enabled: belowDistanceWindows.length > 0,
+  });
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
@@ -348,6 +364,20 @@ export function TrainingBlockCard({
               `${plannedWeeks.length} ${plannedWeeks.length === 1 ? "week" : "weeks"}`,
               `${plannedWeeks.reduce((sum, w) => sum + (w.tss ?? 0), 0).toLocaleString("en-GB")} TSS scheduled`,
             )}
+        </div>
+      )}
+
+      {belowDistanceWindows.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div className="mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)", marginBottom: 8 }}>
+            Best efforts in this block
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10 }}>
+            {belowDistanceWindows.map((window) => {
+              const entry = belowDistanceEfforts?.data.find((e) => e.window === window);
+              return totalsTile(windowLabel(window), entry ? formatBestEffortValue("running_pace", window, entry.value) : "—");
+            })}
+          </div>
         </div>
       )}
 
