@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { deleteAllActivities } from "../../api/activities";
 import { updateAthlete } from "../../api/athletes";
 import { useAuth } from "../../auth/AuthContext";
-import type { AthleteUpdate, ThresholdFieldName } from "../../api/types";
+import type { AthleteUpdate, BikePowerSource, CadenceSource, HrSource, ThresholdFieldName } from "../../api/types";
 import { ThresholdCorrectionModal } from "./ThresholdCorrectionModal";
 
 const inputStyle: React.CSSProperties = {
@@ -120,6 +120,9 @@ export function ProfileTab() {
     threshold_warning_days: user?.threshold_warning_days ?? 21,
     ftp_calculation_method: user?.ftp_calculation_method ?? undefined,
     running_power_source: user?.running_power_source ?? undefined,
+    bike_power_source: user?.bike_power_source ?? "any",
+    hr_source: user?.hr_source ?? "any",
+    cadence_source: user?.cadence_source ?? "any",
     decoupling_vi_limit_bike: user?.decoupling_vi_limit_bike ?? 1.06,
     decoupling_vi_limit_run: user?.decoupling_vi_limit_run ?? 1.04,
     decoupling_if_limit: user?.decoupling_if_limit ?? 0.85,
@@ -302,6 +305,52 @@ export function ProfileTab() {
           <Link to="/devices/cadence/agreement-trend" style={{ fontSize: 13, fontWeight: 600, color: "var(--ember)", textDecoration: "none" }}>
             Cadence (pedals vs trainer vs watch) &rarr;
           </Link>
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>Sensor sources</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <Field label="Bike power source">
+            <select
+              style={inputStyle}
+              value={form.bike_power_source ?? "any"}
+              onChange={(e) => setForm({ ...form, bike_power_source: e.target.value as BikePowerSource })}
+            >
+              <option value="any">No preference</option>
+              <option value="pedals">Pedals</option>
+              <option value="trainer">Trainer</option>
+            </select>
+          </Field>
+          <Field label="Heart rate source">
+            <select
+              style={inputStyle}
+              value={form.hr_source ?? "any"}
+              onChange={(e) => setForm({ ...form, hr_source: e.target.value as HrSource })}
+            >
+              <option value="any">No preference</option>
+              <option value="strap">Chest strap</option>
+              <option value="wrist">Wrist (optical)</option>
+            </select>
+          </Field>
+          <Field label="Cadence source">
+            <select
+              style={inputStyle}
+              value={form.cadence_source ?? "any"}
+              onChange={(e) => setForm({ ...form, cadence_source: e.target.value as CadenceSource })}
+            >
+              <option value="any">No preference</option>
+              <option value="pedals">Pedals</option>
+              <option value="trainer">Trainer</option>
+              <option value="watch">Watch</option>
+            </select>
+          </Field>
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: "-6px 0 0", lineHeight: 1.5 }}>
+            Which reading becomes primary when an activity ends up with more than one source for
+            the same field (e.g. a Zwift/trainer ride also recorded on pedals). "No preference"
+            means attach never auto-swaps. Consulted at attach time only - doesn't repaint
+            activities already imported.
+          </p>
         </div>
       </div>
 
