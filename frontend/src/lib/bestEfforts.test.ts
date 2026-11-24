@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { RecentTopEffort } from "../api/types";
+import type { BestEffort, RecentTopEffort } from "../api/types";
 import {
+  bestEntryForWindow,
   effortLabel,
   formatBestEffortValue,
   groupRecentEffortsByActivity,
@@ -9,6 +10,18 @@ import {
   standardWindowsBelow,
   windowLabel,
 } from "./bestEfforts";
+
+function bestEffort(overrides: Partial<BestEffort> = {}): BestEffort {
+  return {
+    window: "10km",
+    value: 270,
+    unit: "sec_per_km",
+    date: "2026-02-10",
+    activity_id: "act_1",
+    activity_name: "Tuesday tempo",
+    ...overrides,
+  };
+}
 
 function entry(overrides: Partial<RecentTopEffort> = {}): RecentTopEffort {
   return {
@@ -111,6 +124,38 @@ describe("standardWindowsBelow", () => {
 
   it("returns nothing below the shortest tracked window", () => {
     expect(standardWindowsBelow(1)).toEqual([]);
+  });
+});
+
+describe("bestEntryForWindow", () => {
+  it("picks the lowest-value (fastest pace) entry for the given window", () => {
+    const data = [
+      bestEffort({ window: "10km", value: 300, activity_id: "act_slow" }),
+      bestEffort({ window: "10km", value: 260, activity_id: "act_fast" }),
+      bestEffort({ window: "10km", value: 280, activity_id: "act_mid" }),
+    ];
+    expect(bestEntryForWindow(data, "10km")?.activity_id).toBe("act_fast");
+  });
+
+  it("ignores entries for other windows", () => {
+    const data = [bestEffort({ window: "5km", value: 100 }), bestEffort({ window: "10km", value: 260 })];
+    expect(bestEntryForWindow(data, "10km")?.value).toBe(260);
+  });
+
+  it("returns undefined when nothing matches the window", () => {
+    expect(bestEntryForWindow([bestEffort({ window: "5km" })], "10km")).toBeUndefined();
+  });
+
+  it("considers a race's own activity like any other - no exclusion", () => {
+    // #581: an earlier version excluded the viewed race's own linked activity, on the theory
+    // that a marathon's splits always win every shorter embedded window. That hid a genuinely
+    // good race-day PB instead of just labelling it - the caller's own "⚑ Race" indicator is
+    // how that context shows up now, not exclusion from candidacy.
+    const data = [
+      bestEffort({ window: "30km", value: 300, activity_id: "act_training" }),
+      bestEffort({ window: "30km", value: 281, activity_id: "act_race_day" }),
+    ];
+    expect(bestEntryForWindow(data, "30km")?.activity_id).toBe("act_race_day");
   });
 });
 
