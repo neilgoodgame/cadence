@@ -323,10 +323,11 @@ class DurationCurveSerializer(serializers.ModelSerializer):
 
 class BestEffortSerializer(serializers.ModelSerializer):
     activity_id = serializers.CharField(read_only=True)
+    activity_name = serializers.CharField(source="activity.name", read_only=True)
 
     class Meta:
         model = BestEffort
-        fields = ["window", "value", "unit", "date", "activity_id"]
+        fields = ["window", "value", "unit", "date", "activity_id", "activity_name"]
 
 
 class TagAttachSerializer(serializers.Serializer):

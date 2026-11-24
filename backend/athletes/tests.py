@@ -671,6 +671,8 @@ class BestEffortListViewTests(TestCase):
         self.assertEqual(body["period"], "all")
         windows = {e["window"] for e in body["data"]}
         self.assertEqual(windows, {"5min", "20min"})
+        names = {e["activity_name"] for e in body["data"]}
+        self.assertEqual(names, {"Ride", "Old Ride"})
 
     def test_period_filters_by_date(self):
         response = _bearer_client(self.athlete).get(

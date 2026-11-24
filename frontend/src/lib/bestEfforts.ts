@@ -1,4 +1,4 @@
-import type { BestEffortKind, RecentTopEffort } from "../api/types";
+import type { BestEffort, BestEffortKind, Race, RecentTopEffort } from "../api/types";
 import { formatDuration } from "./format";
 
 /** Which family a best-effort kind belongs to, for grouping/labelling - shared by the Best
@@ -64,6 +64,55 @@ export function windowToKm(window: string): number {
   if (mile) return parseFloat(mile[1]) * 1.609344;
   const m = window.match(/^([\d.]+)\s*km/i);
   return m ? parseFloat(m[1]) : 0;
+}
+
+/** The running_pace distance windows the best-efforts API tracks, ascending. */
+export const STANDARD_RUNNING_PACE_WINDOWS = ["1km", "5km", "10km", "10mile", "half_marathon", "30km", "marathon", "50km"];
+
+/** Issue #581: the standard pace windows strictly below a race's own distance - e.g. a
+ * marathon (42.195 km) returns 1km/5km/10km/10mile/half_marathon/30km. Applies the same rule
+ * regardless of whether distanceKm itself is a standard window (an 8 km fun run still returns
+ * 1km/5km). */
+export function standardWindowsBelow(distanceKm: number): string[] {
+  return STANDARD_RUNNING_PACE_WINDOWS.filter((w) => windowToKm(w) < distanceKm);
+}
+
+/** Issue #581: the fastest in-range entry for one window, excluding the race's own linked
+ * activity. GET .../best-efforts returns each window's rows worst-first (so a plain
+ * `.find()` for one window picks the slowest one, not the best - caught live when a 30 km
+ * tile showed a July training run far off the athlete's actual 30 km best). The race's own
+ * activity is excluded on top of that: a full marathon's continuous splits naturally set
+ * "best" times at every shorter embedded distance too, so without this a late-race window
+ * (half marathon, 30 km) nearly always shows the race itself rather than training. Shared by
+ * TrainingBlockCard (the on-page tiles) and the download report's training block sheet, so
+ * both agree on exactly which entry "the best effort in this block" means. */
+export function bestEntryForWindow(data: BestEffort[], window: string, excludeActivityId: string | null): BestEffort | undefined {
+  let best: BestEffort | undefined;
+  for (const entry of data) {
+    if (entry.window !== window || entry.activity_id === excludeActivityId) continue;
+    if (best == null || entry.value < best.value) best = entry;
+  }
+  return best;
+}
+
+export interface BestEffortBelowDistance {
+  entry: BestEffort | undefined;
+  isRace: boolean;
+}
+
+/** Issue #581: bestEntryForWindow() plus the "did this come from a race" flag, as one call -
+ * shared by TrainingBlockCard (the on-page tiles) and the download report's training block
+ * sheet so they can't drift on which entry counts as "the best effort in this block" or on
+ * which of those entries gets the race indicator. */
+export function bestEffortBelowDistance(
+  data: BestEffort[],
+  window: string,
+  excludeActivityId: string | null,
+  allRaces: Race[],
+): BestEffortBelowDistance {
+  const entry = bestEntryForWindow(data, window, excludeActivityId);
+  const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
+  return { entry, isRace };
 }
 
 /** "5 min power" / "Half marathon" - matches the Dashboard design's effortLabel(e): the metric

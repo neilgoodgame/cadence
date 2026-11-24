@@ -1,6 +1,8 @@
 import { useState } from "react";
-import type { Race, RaceBlock, RaceBlockWeek } from "../../api/types";
+import { Link } from "react-router-dom";
+import type { BestEffort, Race, RaceBlock, RaceBlockWeek } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
+import { bestEffortBelowDistance, formatBestEffortValue, windowLabel } from "../../lib/bestEfforts";
 import {
   SEGMENT_COLOR,
   SEGMENT_LABEL,
@@ -96,6 +98,41 @@ function totalsTile(label: string, value: string, sub?: string) {
   );
 }
 
+/** Issue #581: a below-distance best-effort tile - like totalsTile, but linked to the source
+ * activity (when one exists) and with the activity name, per-km pace, date, and a "⚑" race
+ * indicator (the same flag the weekly table's own race notes use) as sub-lines, instead of
+ * totalsTile's generic sub string. Not a totalsTile variant since the link wrapper changes its
+ * element type (an <a>, not a <div>), not just its content. */
+function bestEffortTile(label: string, window: string, entry: BestEffort | undefined, isRace: boolean) {
+  const tileStyle: React.CSSProperties = { display: "block", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", textDecoration: "none", color: "inherit" };
+  const labelEl = (
+    <div className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>
+      {label}
+    </div>
+  );
+  if (!entry) {
+    return (
+      <div key={label} style={tileStyle}>
+        {labelEl}
+        <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3, color: "var(--ink3)" }}>—</div>
+      </div>
+    );
+  }
+  return (
+    <Link key={label} to={`/activities/${entry.activity_id}`} style={tileStyle}>
+      {labelEl}
+      <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3 }}>{formatBestEffortValue("running_pace", window, entry.value)}</div>
+      <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {isRace && "⚑ "}
+        {entry.activity_name}
+      </div>
+      <div className="mono" style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 1 }}>
+        {formatPace(entry.value)} · {shortDate(entry.date)}
+      </div>
+    </Link>
+  );
+}
+
 /** Weekly table columns: Wk, Week of, Phase, TSS, then RUN (km, time, runs, pace, long), RIDE
  * (time, rides, avg W), CTL, vs comparison, note - the RUN/RIDE group header spans by index. */
 const MONO = '"JetBrains Mono", monospace';
@@ -109,12 +146,19 @@ export function TrainingBlockCard({
   race,
   block,
   allRaces,
+  belowDistanceWindows,
+  belowDistanceEfforts,
   selectedIndex,
   onSelectIndex,
 }: {
   race: Race;
   block: RaceBlock;
   allRaces: Race[];
+  /** Issue #581 - the standard pace windows below the race's own distance, and the matching
+   * best-effort rows, both fetched by RaceDetailScreen (not here) so the download report can
+   * reuse the same data without a second request. */
+  belowDistanceWindows: string[];
+  belowDistanceEfforts: BestEffort[];
   selectedIndex: number | null;
   onSelectIndex: (index: number | null) => void;
 }) {
@@ -348,6 +392,20 @@ export function TrainingBlockCard({
               `${plannedWeeks.length} ${plannedWeeks.length === 1 ? "week" : "weeks"}`,
               `${plannedWeeks.reduce((sum, w) => sum + (w.tss ?? 0), 0).toLocaleString("en-GB")} TSS scheduled`,
             )}
+        </div>
+      )}
+
+      {belowDistanceWindows.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div className="mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)", marginBottom: 8 }}>
+            Best efforts in this block
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+            {belowDistanceWindows.map((window) => {
+              const { entry, isRace } = bestEffortBelowDistance(belowDistanceEfforts, window, race.activity_id, allRaces);
+              return bestEffortTile(windowLabel(window), window, entry, isRace);
+            })}
+          </div>
         </div>
       )}
 

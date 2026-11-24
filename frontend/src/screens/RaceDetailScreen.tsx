@@ -2,10 +2,12 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { getActivity } from "../api/activities";
+import { listBestEfforts } from "../api/athletes";
 import { getCourse } from "../api/courses";
 import { getRace, getRaceBlock, getRaceSplits, listRaces } from "../api/races";
 import { useAuth } from "../auth/AuthContext";
 import type { Race, RaceBlock, Sport } from "../api/types";
+import { standardWindowsBelow } from "../lib/bestEfforts";
 import { daysUntil } from "../lib/dates";
 import { CommentsCard } from "./race-detail/CommentsCard";
 import { ContextCard } from "./race-detail/ContextCard";
@@ -56,6 +58,19 @@ export function RaceDetailScreen() {
     enabled: !!parent && !!race?.result_time,
   });
 
+  // Issue #581: pace best efforts at the standard distances below this race's own, over the
+  // block's own window (block.start through the race date, or today if it hasn't happened
+  // yet) - running only. Fetched here (not inside TrainingBlockCard) so the download report
+  // can include the same data without a second request.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const belowDistanceWindows = race?.sport === "run" && race.distance_km != null ? standardWindowsBelow(race.distance_km) : [];
+  const blockEndDate = race ? (race.date < todayIso ? race.date : todayIso) : null;
+  const { data: belowDistanceEfforts } = useQuery({
+    queryKey: ["best-efforts", user?.id, "running_pace", "range", block?.start, blockEndDate],
+    queryFn: () => listBestEfforts(user!.id, "running_pace", undefined, { startDate: block!.start, endDate: blockEndDate! }),
+    enabled: !!user && !!block && belowDistanceWindows.length > 0,
+  });
+
   if (!race || !block || !user) {
     return <div style={{ color: "var(--ink3)" }}>Loading…</div>;
   }
@@ -101,6 +116,9 @@ export function RaceDetailScreen() {
         showWeather,
         elevationAvailable,
         comparisonLabel,
+        belowDistanceWindows,
+        belowDistanceEfforts: belowDistanceEfforts?.data ?? [],
+        allRaces,
       });
     } finally {
       setDownloadingReport(false);
@@ -126,7 +144,15 @@ export function RaceDetailScreen() {
 
       {showSplits && <SplitsCard raceId={race.id} distanceKm={race.distance_km} course={course ?? null} />}
 
-      <TrainingBlockCard race={race} block={block} allRaces={allRaces} selectedIndex={selectedWeek != null ? selectedWeek - 1 : null} onSelectIndex={(i) => setSelectedWeek(i != null ? i + 1 : null)} />
+      <TrainingBlockCard
+        race={race}
+        block={block}
+        allRaces={allRaces}
+        belowDistanceWindows={belowDistanceWindows}
+        belowDistanceEfforts={belowDistanceEfforts?.data ?? []}
+        selectedIndex={selectedWeek != null ? selectedWeek - 1 : null}
+        onSelectIndex={(i) => setSelectedWeek(i != null ? i + 1 : null)}
+      />
 
       {showDurability && <DurabilityCard athleteId={user.id} block={block} />}
 

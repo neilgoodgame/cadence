@@ -969,6 +969,7 @@ export interface BestEffort {
   unit: string;
   date: string;
   activity_id: string;
+  activity_name: string;
 }
 
 export type BestEffortKind = "cycling_hr" | "cycling_power" | "running_hr" | "running_pace" | "running_power";

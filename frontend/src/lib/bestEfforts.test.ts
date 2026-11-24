@@ -6,6 +6,7 @@ import {
   groupRecentEffortsByActivity,
   qualifyingRecentEfforts,
   recentTopEffortHeadline,
+  standardWindowsBelow,
   windowLabel,
 } from "./bestEfforts";
 
@@ -90,6 +91,26 @@ describe("windowLabel", () => {
 
   it("falls back to the raw value for anything unmapped", () => {
     expect(windowLabel("bogus")).toBe("bogus");
+  });
+});
+
+describe("standardWindowsBelow", () => {
+  it("returns the standard windows strictly below a marathon", () => {
+    expect(standardWindowsBelow(42.195)).toEqual(["1km", "5km", "10km", "10mile", "half_marathon", "30km"]);
+  });
+
+  it("returns the standard windows strictly below a half marathon", () => {
+    expect(standardWindowsBelow(21.097)).toEqual(["1km", "5km", "10km", "10mile"]);
+  });
+
+  it("applies the same below-distance rule for a non-standard race distance", () => {
+    // An 8 km fun run isn't itself a tracked window - #581's own decision is to still show
+    // the standard windows below it, same as a standard race distance would.
+    expect(standardWindowsBelow(8)).toEqual(["1km", "5km"]);
+  });
+
+  it("returns nothing below the shortest tracked window", () => {
+    expect(standardWindowsBelow(1)).toEqual([]);
   });
 });
 

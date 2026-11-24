@@ -3,6 +3,7 @@ package com.cadence.api.activities;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -51,15 +52,22 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 	/** Issue #498: a duplicate recording's row is excluded from every best-effort ranking/listing
 	 * query (this one and the two below) - it's the same ride as its primary, so it shouldn't
 	 * compete for or occupy a ranked slot a genuinely different activity's effort could hold. */
+	/** @EntityGraph on this and the two finders below - BestEffortController#listBestEfforts
+	 * reads getActivity().getName() for the response's activity_name (issue #581), and that
+	 * controller method isn't @Transactional (open-in-view is off), so the lazy activity
+	 * association must be fetched eagerly here rather than on first access. */
+	@EntityGraph(attributePaths = "activity")
 	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(
 			String athleteId, BestEffortKind kind, LocalDate since);
 
+	@EntityGraph(attributePaths = "activity")
 	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(
 			String athleteId, BestEffortKind kind);
 
 	/** Issue #582: explicit date-range variant of the finder above - e.g. a race's
 	 * training-block window, which the fixed now-anchored periods can't express. Inclusive on
 	 * both bounds, matching Django's date__gte/date__lte filter. */
+	@EntityGraph(attributePaths = "activity")
 	List<BestEffort> findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualAndDateLessThanEqualOrderByWindowAscValueDesc(
 			String athleteId, BestEffortKind kind, LocalDate start, LocalDate end);
 
@@ -67,6 +75,7 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 	 * default exclusion above for ad-hoc inspection of a same-ride-twice pair. The REST
 	 * BestEffortController and every other caller keep using the always-excluding finders
 	 * above instead. */
+	@EntityGraph(attributePaths = "activity")
 	@Query("select be from BestEffort be where be.athlete.id = :athleteId and be.kind = :kind "
 			+ "and (:includeDuplicates = true or be.activity.primaryActivity is null) "
 			+ "and be.date >= :since order by be.window asc, be.value desc")
@@ -74,6 +83,7 @@ public interface BestEffortRepository extends JpaRepository<BestEffort, Long> {
 			@Param("athleteId") String athleteId, @Param("kind") BestEffortKind kind,
 			@Param("since") LocalDate since, @Param("includeDuplicates") boolean includeDuplicates);
 
+	@EntityGraph(attributePaths = "activity")
 	@Query("select be from BestEffort be where be.athlete.id = :athleteId and be.kind = :kind "
 			+ "and (:includeDuplicates = true or be.activity.primaryActivity is null) "
 			+ "order by be.window asc, be.value desc")

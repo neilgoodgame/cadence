@@ -5812,6 +5812,7 @@ components:
         unit: { type: string, example: watts }
         date: { type: string, format: date }
         activity_id: { type: string }
+        activity_name: { type: string }
 
     ActivityDurabilityRow:
       type: object

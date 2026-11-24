@@ -135,7 +135,8 @@ public class BestEffortController {
 		List<BestEffort> capped = capPerWindow(efforts, kind == BestEffortKind.RUNNING_PACE, topN);
 
 		List<BestEffortResponse> data = capped.stream()
-				.map(e -> new BestEffortResponse(e.getWindow(), e.getValue(), e.getUnit(), e.getDate(), e.getActivity().getId()))
+				.map(e -> new BestEffortResponse(e.getWindow(), e.getValue(), e.getUnit(), e.getDate(), e.getActivity().getId(),
+						e.getActivity().getName()))
 				.toList();
 		return new BestEffortListResponse(kind, rangeStart != null ? null : effectivePeriod, data, rangeStart, rangeEnd);
 	}

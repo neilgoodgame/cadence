@@ -104,7 +104,8 @@ class BestEffortDateRangeHttpIntegrationTest extends IntegrationTest {
 				.andExpect(jsonPath("$.period").value(nullValue()))
 				.andExpect(jsonPath("$.start_date").value(LocalDate.now().minusDays(10).toString()))
 				.andExpect(jsonPath("$.data.length()").value(1))
-				.andExpect(jsonPath("$.data[0].activity_id").value(inside.getActivity().getId()));
+				.andExpect(jsonPath("$.data[0].activity_id").value(inside.getActivity().getId()))
+				.andExpect(jsonPath("$.data[0].activity_name").value(inside.getActivity().getName()));
 	}
 
 	@Test

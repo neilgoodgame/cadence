@@ -309,8 +309,10 @@ class BestEffortListView(APIView):
         else:
             start_date = end_date = None
 
-        qs = BestEffort.objects.filter(athlete_id=id, kind=kind, activity__primary_activity__isnull=True).order_by(
-            "window", "-value"
+        qs = (
+            BestEffort.objects.filter(athlete_id=id, kind=kind, activity__primary_activity__isnull=True)
+            .select_related("activity")
+            .order_by("window", "-value")
         )
         if start_date is not None:
             qs = qs.filter(date__gte=start_date, date__lte=end_date)
