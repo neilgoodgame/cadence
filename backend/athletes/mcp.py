@@ -219,7 +219,7 @@ class AthleteMCPTools(ScopedMCPToolset):
             qs = qs.filter(date__gte=cutoff)
 
         athlete = get_object_or_404(User, pk=athlete_id)
-        capped = cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
+        capped = cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n_for_kind(kind))
 
         return {
             "kind": kind,

@@ -739,7 +739,11 @@ class BestEffortListViewTests(TestCase):
         # periods) and a 100-days-ago band (slower, but forms its own top-N within the narrower
         # 112-day period) both survive trim - a period=1y read spans both bands' cutoffs, so
         # without a read-side cap it would return 2*top_n rows for this one window.
+        # Issue #597: running_pace reads its own best_effort_top_n_running_pace, not the flat
+        # field - set both so this test (deliberately kind="running_pace") still exercises
+        # capping rather than running_pace's new unlimited-by-default behavior.
         self.athlete.best_effort_top_n = 3
+        self.athlete.best_effort_top_n_running_pace = 3
         self.athlete.save()
 
         def make(value, days_ago):
@@ -764,7 +768,7 @@ class BestEffortListViewTests(TestCase):
         for v in (200.0, 201.0, 202.0, 203.0):
             make(v, days_ago=100)
 
-        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.athlete.best_effort_top_n)
+        _trim_kind_window(self.athlete.id, "running_pace", "10km", True, self.athlete.best_effort_top_n_running_pace)
 
         response = _bearer_client(self.athlete).get(
             f"/v1/athletes/{self.athlete.id}/best-efforts?kind=running_pace&period=1y"

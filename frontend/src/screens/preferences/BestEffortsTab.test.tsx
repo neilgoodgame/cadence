@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { renderWithProviders } from "../../test/renderWithProviders";
 import { BestEffortsTab } from "./BestEffortsTab";
 import { useAuth } from "../../auth/AuthContext";
-import { updateAthlete } from "../../api/athletes";
+import { trimBestEfforts, updateAthlete } from "../../api/athletes";
 import type { Athlete, AthleteUpdateResponse } from "../../api/types";
 
 vi.mock("../../auth/AuthContext", () => ({ useAuth: vi.fn() }));
@@ -43,6 +43,8 @@ function athlete(overrides: Partial<Athlete> = {}): Athlete {
     max_hr: 190,
     resting_hr: 50,
     best_effort_top_n: 10,
+    best_effort_top_n_running_pace: 0,
+    best_effort_top_n_power: null,
     ftp_calculation_method: "twenty_min_test",
     running_power_source: "stryd",
     is_coach: false,
@@ -97,6 +99,10 @@ function mockAuth(user: Athlete, setUser = vi.fn()) {
 function saveButton() {
   const section = screen.getByRole("heading", { name: "Threshold history" }).closest("section")!;
   return within(section).getByRole("button", { name: "Save" });
+}
+
+function sectionNamed(heading: string) {
+  return within(screen.getByRole("heading", { name: heading }).closest("section")!);
 }
 
 describe("BestEffortsTab - gradual decay settings", () => {
@@ -173,5 +179,67 @@ describe("BestEffortsTab - gradual decay settings", () => {
       threshold_decay_max_pct: 9,
     });
     await waitFor(() => expect(setUser).toHaveBeenCalled());
+  });
+});
+
+describe("BestEffortsTab - pace/power retention (issue #597)", () => {
+  it("defaults the pace checkbox to checked (unlimited) and the power checkbox to unchecked", () => {
+    mockAuth(athlete({ best_effort_top_n_running_pace: 0, best_effort_top_n_power: null }));
+    renderWithProviders(<BestEffortsTab />);
+
+    expect(screen.getByLabelText("Track all running pace activities (no limit)")).toBeChecked();
+    expect(screen.getByLabelText("Track all power activities (no limit)")).not.toBeChecked();
+  });
+
+  it("unchecking the pace checkbox reveals a custom limit, and Save sends it", async () => {
+    const user = userEvent.setup();
+    const setUser = vi.fn();
+    const stored = athlete({ best_effort_top_n_running_pace: 0 });
+    mockAuth(stored, setUser);
+    vi.mocked(updateAthlete).mockResolvedValue(athleteUpdateResponse({ best_effort_top_n_running_pace: 5 }));
+    renderWithProviders(<BestEffortsTab />);
+    const pace = sectionNamed("Running pace retention");
+
+    await user.click(pace.getByLabelText("Track all running pace activities (no limit)"));
+    fireEvent.change(pace.getByRole("spinbutton"), { target: { value: "5" } });
+    await user.click(pace.getByRole("button", { name: "Save" }));
+
+    expect(updateAthlete).toHaveBeenCalledWith(stored.id, { best_effort_top_n_running_pace: 5 });
+    // Decreasing from unlimited (0) to a finite cap must trim existing rows down to it.
+    await waitFor(() => expect(trimBestEfforts).toHaveBeenCalledWith(stored.id));
+    await waitFor(() => expect(setUser).toHaveBeenCalled());
+  });
+
+  it("checking the power checkbox and saving sends the unlimited override plus a trim", async () => {
+    const user = userEvent.setup();
+    const setUser = vi.fn();
+    const stored = athlete({ best_effort_top_n_power: null });
+    mockAuth(stored, setUser);
+    vi.mocked(updateAthlete).mockResolvedValue(athleteUpdateResponse({ best_effort_top_n_power: 0 }));
+    renderWithProviders(<BestEffortsTab />);
+    const power = sectionNamed("Power retention");
+
+    await user.click(power.getByLabelText("Track all power activities (no limit)"));
+    await user.click(power.getByRole("button", { name: "Save" }));
+
+    expect(updateAthlete).toHaveBeenCalledWith(stored.id, { best_effort_top_n_power: 0 });
+    await waitFor(() => expect(trimBestEfforts).toHaveBeenCalledWith(stored.id));
+    await waitFor(() => expect(setUser).toHaveBeenCalled());
+  });
+
+  it("unchecking an already-overridden power setting clears it with the -1 sentinel", async () => {
+    const user = userEvent.setup();
+    const setUser = vi.fn();
+    const stored = athlete({ best_effort_top_n_power: 0 });
+    mockAuth(stored, setUser);
+    vi.mocked(updateAthlete).mockResolvedValue(athleteUpdateResponse({ best_effort_top_n_power: null }));
+    renderWithProviders(<BestEffortsTab />);
+    const power = sectionNamed("Power retention");
+    expect(power.getByLabelText("Track all power activities (no limit)")).toBeChecked();
+
+    await user.click(power.getByLabelText("Track all power activities (no limit)"));
+    await user.click(power.getByRole("button", { name: "Save" }));
+
+    expect(updateAthlete).toHaveBeenCalledWith(stored.id, { best_effort_top_n_power: -1 });
   });
 });

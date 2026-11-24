@@ -75,7 +75,7 @@ public class BestEffortTools {
 				: bestEffortRepository.findByAthleteIdAndKindOrderByWindowAscValueDesc(
 						athleteId, effectiveKind, effectiveIncludeDuplicates);
 
-		int topN = userService.getById(athleteId).getBestEffortTopN();
+		int topN = userService.getById(athleteId).getBestEffortTopNForKind(effectiveKind);
 		List<BestEffort> capped = BestEffortController.capPerWindow(efforts, effectiveKind == BestEffortKind.RUNNING_PACE, topN);
 
 		List<BestEffortResponse> data = capped.stream()

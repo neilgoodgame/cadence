@@ -319,7 +319,7 @@ class BestEffortListView(APIView):
             qs = qs.filter(date__gte=cutoff)
 
         athlete = get_object_or_404(User, pk=id)
-        capped = cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n)
+        capped = cap_per_window(list(qs), kind in LOWER_IS_BETTER_KINDS, athlete.best_effort_top_n_for_kind(kind))
 
         return Response(
             {
@@ -594,7 +594,7 @@ class ActivityBestEffortRanksView(APIView):
                 if period in BEST_EFFORT_PERIOD_DAYS:
                     cutoff = timezone.now().date() - timedelta(days=BEST_EFFORT_PERIOD_DAYS[period])
                     qs = qs.filter(date__gte=cutoff)
-                capped = cap_per_window(list(qs), lower_is_better, athlete.best_effort_top_n)
+                capped = cap_per_window(list(qs), lower_is_better, athlete.best_effort_top_n_for_kind(kind))
 
                 by_window: dict[str, list[BestEffort]] = {}
                 for effort in capped:

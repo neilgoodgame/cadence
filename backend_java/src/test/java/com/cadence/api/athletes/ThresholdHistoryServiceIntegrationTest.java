@@ -369,14 +369,14 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 	private AthleteUpdateRequest previewRequest(int ftp, boolean preview) {
 		return new AthleteUpdateRequest(null, null, null, ftp, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, null, true, preview, null, null, null, null, null, null, null, null);
+				null, null, null, null, true, preview, null, null, null, null, null, null, null, null, null, null);
 	}
 
 	// As previewRequest, but with an explicit effectiveFrom (issue #493/#494 backdating).
 	private AthleteUpdateRequest backdatedPreviewRequest(int ftp, LocalDate effectiveFrom, boolean preview) {
 		return new AthleteUpdateRequest(null, null, null, ftp, null, null, null, null, null, null, null, null, null, null,
 				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, effectiveFrom, true, preview, null, null, null, null, null, null, null, null);
+				null, null, null, effectiveFrom, true, preview, null, null, null, null, null, null, null, null, null, null);
 	}
 
 	// issue #494: the decay-off half - a correction-only row (Piece A's new sanity reference)

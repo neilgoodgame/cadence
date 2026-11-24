@@ -1213,7 +1213,7 @@ def _update_power_best_efforts(
     activity: Activity, athlete: User, kind: str, power_series: Sequence[float | None]
 ) -> None:
     values = [p if p is not None else 0 for p in power_series]
-    top_n = athlete.best_effort_top_n
+    top_n = athlete.best_effort_top_n_for_kind(kind)
     for window_label, seconds in POWER_BEST_EFFORT_WINDOWS:
         if seconds > len(values):
             continue
@@ -1236,7 +1236,7 @@ def _update_power_best_efforts(
 
 def _update_hr_best_efforts(activity: Activity, athlete: User, kind: str, hr_series: Sequence[float | None]) -> None:
     values = [h if h is not None else 0 for h in hr_series]
-    top_n = athlete.best_effort_top_n
+    top_n = athlete.best_effort_top_n_for_kind(kind)
     for window_label, seconds in HR_BEST_EFFORT_WINDOWS:
         if seconds > len(values):
             continue
@@ -1260,7 +1260,7 @@ def _update_hr_best_efforts(activity: Activity, athlete: User, kind: str, hr_ser
 def _update_pace_best_efforts(
     activity: Activity, athlete: User, t_series: Sequence[int], distance_km_series: Sequence[float | None]
 ) -> None:
-    top_n = athlete.best_effort_top_n
+    top_n = athlete.best_effort_top_n_for_kind("running_pace")
     for label, target_km in PACE_BEST_EFFORT_DISTANCES_KM:
         pace_sec_per_km = _best_pace_seconds_per_km(t_series, distance_km_series, target_km)
         if pace_sec_per_km is None:
@@ -1314,17 +1314,26 @@ def compute_kind_best_efforts(
 
 
 def trim_best_efforts(athlete: User) -> None:
-    top_n = athlete.best_effort_top_n
-    if top_n == 0:
-        return
+    """Trim existing records to the athlete's current per-kind top-N (see
+    User.best_effort_top_n_for_kind) without re-reading activity data. Use this when a limit
+    has decreased; _trim_kind_window already no-ops when its own top_n is 0, so a mix of some
+    kinds unlimited and others capped trims exactly the capped ones."""
     for window_label, _ in HR_BEST_EFFORT_WINDOWS:
-        _trim_kind_window(athlete.id, "cycling_hr", window_label, False, top_n)
-        _trim_kind_window(athlete.id, "running_hr", window_label, False, top_n)
+        _trim_kind_window(
+            athlete.id, "cycling_hr", window_label, False, athlete.best_effort_top_n_for_kind("cycling_hr")
+        )
+        _trim_kind_window(
+            athlete.id, "running_hr", window_label, False, athlete.best_effort_top_n_for_kind("running_hr")
+        )
     for window_label, _ in POWER_BEST_EFFORT_WINDOWS:
-        _trim_kind_window(athlete.id, "cycling_power", window_label, False, top_n)
-        _trim_kind_window(athlete.id, "running_power", window_label, False, top_n)
+        _trim_kind_window(
+            athlete.id, "cycling_power", window_label, False, athlete.best_effort_top_n_for_kind("cycling_power")
+        )
+        _trim_kind_window(
+            athlete.id, "running_power", window_label, False, athlete.best_effort_top_n_for_kind("running_power")
+        )
     for label, _ in PACE_BEST_EFFORT_DISTANCES_KM:
-        _trim_kind_window(athlete.id, "running_pace", label, True, top_n)
+        _trim_kind_window(athlete.id, "running_pace", label, True, athlete.best_effort_top_n_for_kind("running_pace"))
 
 
 def update_best_efforts(

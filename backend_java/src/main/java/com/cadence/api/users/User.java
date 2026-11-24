@@ -68,6 +68,25 @@ public class User extends PrefixedIdEntity {
 	@Column(name = "best_effort_top_n", nullable = false)
 	private int bestEffortTopN = 10;
 
+	/** Issue #597: running_pace-only override of bestEffortTopN above - independent of it, not a
+	 * fallback onto it. Defaults to 0 (unlimited) rather than mirroring bestEffortTopN's own
+	 * default of 10: a pace window can be an embedded split within a much longer activity (a
+	 * marathon's internal 1 km or 10 mile segment), which almost never ranks in an athlete's
+	 * genuine all-time top 10 for that window and so was getting computed and immediately
+	 * trimmed away by {@link com.cadence.api.activities.BestEffortComputeService#trimToTop} in
+	 * the same call - unlike power/HR, which have no known equivalent gap, so their shared
+	 * default is left alone. */
+	@Column(name = "best_effort_top_n_running_pace", nullable = false)
+	private int bestEffortTopNRunningPace = 0;
+
+	/** Issue #597: running_power/cycling_power-only override of bestEffortTopN - {@code null}
+	 * (the default) means "use bestEffortTopN", exactly the shared behavior before this field
+	 * existed. Unlike bestEffortTopNRunningPace above, this defaults to off (no override): there's
+	 * no known trimming gap for power, so adding this control shouldn't change any existing
+	 * athlete's behavior until they opt in via Preferences. */
+	@Column(name = "best_effort_top_n_power")
+	private Integer bestEffortTopNPower;
+
 	/** Rolling-window threshold determination (see com.cadence.api.athletes.ThresholdHistoryService):
 	 * ftp/criticalRunPower/thresholdPace above are each the best qualifying effort within the
 	 * trailing thresholdWindowDays - not a one-way ratchet, a value drops automatically once its
@@ -417,6 +436,35 @@ public class User extends PrefixedIdEntity {
 
 	public void setBestEffortTopN(int bestEffortTopN) {
 		this.bestEffortTopN = bestEffortTopN;
+	}
+
+	public int getBestEffortTopNRunningPace() {
+		return bestEffortTopNRunningPace;
+	}
+
+	public void setBestEffortTopNRunningPace(int bestEffortTopNRunningPace) {
+		this.bestEffortTopNRunningPace = bestEffortTopNRunningPace;
+	}
+
+	public Integer getBestEffortTopNPower() {
+		return bestEffortTopNPower;
+	}
+
+	public void setBestEffortTopNPower(Integer bestEffortTopNPower) {
+		this.bestEffortTopNPower = bestEffortTopNPower;
+	}
+
+	/** The effective top-N to apply for a given best-effort kind, resolving the per-kind
+	 * overrides above - every write-time trim and read-time cap goes through this rather than
+	 * reading bestEffortTopN/bestEffortTopNRunningPace/bestEffortTopNPower directly, so the
+	 * fallback rule (null power override defers to the flat setting; HR has no override at all)
+	 * only lives in one place. */
+	public int getBestEffortTopNForKind(com.cadence.api.activities.BestEffortKind kind) {
+		return switch (kind) {
+			case RUNNING_PACE -> bestEffortTopNRunningPace;
+			case RUNNING_POWER, CYCLING_POWER -> bestEffortTopNPower != null ? bestEffortTopNPower : bestEffortTopN;
+			case RUNNING_HR, CYCLING_HR -> bestEffortTopN;
+		};
 	}
 
 	public int getThresholdWindowDays() {

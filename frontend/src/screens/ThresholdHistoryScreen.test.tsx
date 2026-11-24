@@ -43,6 +43,8 @@ function athlete(overrides: Partial<Athlete> = {}): Athlete {
     max_hr: 190,
     resting_hr: 50,
     best_effort_top_n: 10,
+    best_effort_top_n_running_pace: 0,
+    best_effort_top_n_power: null,
     ftp_calculation_method: "twenty_min_test",
     running_power_source: "stryd",
     is_coach: false,

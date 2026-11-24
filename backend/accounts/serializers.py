@@ -27,6 +27,8 @@ class UserSerializer(serializers.ModelSerializer):
             "is_coach",
             "is_admin",
             "best_effort_top_n",
+            "best_effort_top_n_running_pace",
+            "best_effort_top_n_power",
             "threshold_window_days",
             "threshold_sanity_pct",
             "threshold_warning_days",
