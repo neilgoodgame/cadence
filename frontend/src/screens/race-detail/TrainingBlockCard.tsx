@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import type { BestEffort, Race, RaceBlock, RaceBlockWeek } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
-import { listBestEfforts } from "../../api/athletes";
-import { formatBestEffortValue, standardWindowsBelow, windowLabel } from "../../lib/bestEfforts";
+import { bestEntryForWindow, formatBestEffortValue, windowLabel } from "../../lib/bestEfforts";
 import {
   SEGMENT_COLOR,
   SEGMENT_LABEL,
@@ -100,28 +98,12 @@ function totalsTile(label: string, value: string, sub?: string) {
   );
 }
 
-/** Issue #581: the fastest in-range entry for one window, excluding the race's own linked
- * activity. GET .../best-efforts returns each window's rows worst-first (so a plain
- * `.find()` for one window picks the slowest one, not the best - caught live when a 30 km
- * tile showed a July training run far off most athletes' actual 30 km best). The race's own
- * activity is excluded on top of that: a full marathon's continuous splits naturally set
- * "best" times at every shorter embedded distance too, so without this a late-race tile
- * nearly always shows the race itself rather than anything from training - exactly the
- * "matches the date of the race" bug this fixes. */
-function bestEntryForWindow(data: BestEffort[] | undefined, window: string, excludeActivityId: string | null): BestEffort | undefined {
-  let best: BestEffort | undefined;
-  for (const entry of data ?? []) {
-    if (entry.window !== window || entry.activity_id === excludeActivityId) continue;
-    if (best == null || entry.value < best.value) best = entry;
-  }
-  return best;
-}
-
 /** Issue #581: a below-distance best-effort tile - like totalsTile, but linked to the source
- * activity (when one exists) and with the per-km pace + date as the sub-line, instead of
+ * activity (when one exists) and with the activity name, per-km pace, date, and a "⚑" race
+ * indicator (the same flag the weekly table's own race notes use) as sub-lines, instead of
  * totalsTile's generic sub string. Not a totalsTile variant since the link wrapper changes its
  * element type (an <a>, not a <div>), not just its content. */
-function bestEffortTile(label: string, window: string, entry: BestEffort | undefined) {
+function bestEffortTile(label: string, window: string, entry: BestEffort | undefined, isRace: boolean) {
   const tileStyle: React.CSSProperties = { display: "block", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", textDecoration: "none", color: "inherit" };
   const labelEl = (
     <div className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>
@@ -140,6 +122,10 @@ function bestEffortTile(label: string, window: string, entry: BestEffort | undef
     <Link key={label} to={`/activities/${entry.activity_id}`} style={tileStyle}>
       {labelEl}
       <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3 }}>{formatBestEffortValue("running_pace", window, entry.value)}</div>
+      <div style={{ fontSize: 11.5, color: "var(--ink2)", marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {isRace && "⚑ "}
+        {entry.activity_name}
+      </div>
       <div className="mono" style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 1 }}>
         {formatPace(entry.value)} · {shortDate(entry.date)}
       </div>
@@ -157,17 +143,22 @@ const TABLE_COLS = "28px 60px 48px repeat(11, minmax(44px,1fr)) minmax(100px,1.3
  * prototype). Totals tiles only make sense for a full A-race block (a B/C's 5-week window is
  * too short to read trend from), so they're gated on `race.priority === "A"`. */
 export function TrainingBlockCard({
-  athleteId,
   race,
   block,
   allRaces,
+  belowDistanceWindows,
+  belowDistanceEfforts,
   selectedIndex,
   onSelectIndex,
 }: {
-  athleteId: string;
   race: Race;
   block: RaceBlock;
   allRaces: Race[];
+  /** Issue #581 - the standard pace windows below the race's own distance, and the matching
+   * best-effort rows, both fetched by RaceDetailScreen (not here) so the download report can
+   * reuse the same data without a second request. */
+  belowDistanceWindows: string[];
+  belowDistanceEfforts: BestEffort[];
   selectedIndex: number | null;
   onSelectIndex: (index: number | null) => void;
 }) {
@@ -227,17 +218,6 @@ export function TrainingBlockCard({
   const plannedWeeks = block.weeks.filter((w) => w.planned && !isUnscheduled(w));
   const span = inProgress ? "so far" : "over the block";
   const averages = weeklyAverages(actualWeeks.filter(({ index }) => index !== currentIndex).map(({ week }) => week));
-
-  // Issue #581: pace best efforts at the standard distances below this race's own, over the
-  // block's own window (block.start through the race date, or today if it hasn't happened
-  // yet) - running only, matching #581's scope decision.
-  const blockEndDate = race.date < todayIso ? race.date : todayIso;
-  const belowDistanceWindows = race.sport === "run" && race.distance_km != null ? standardWindowsBelow(race.distance_km) : [];
-  const { data: belowDistanceEfforts } = useQuery({
-    queryKey: ["best-efforts", athleteId, "running_pace", "range", block.start, blockEndDate],
-    queryFn: () => listBestEfforts(athleteId, "running_pace", undefined, { startDate: block.start, endDate: blockEndDate }),
-    enabled: belowDistanceWindows.length > 0,
-  });
 
   return (
     <div style={{ background: "var(--card)", border: "1px solid var(--line)", borderRadius: 14, padding: 20 }}>
@@ -420,10 +400,12 @@ export function TrainingBlockCard({
           <div className="mono" style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)", marginBottom: 8 }}>
             Best efforts in this block
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10 }}>
-            {belowDistanceWindows.map((window) =>
-              bestEffortTile(windowLabel(window), window, bestEntryForWindow(belowDistanceEfforts?.data, window, race.activity_id)),
-            )}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+            {belowDistanceWindows.map((window) => {
+              const entry = bestEntryForWindow(belowDistanceEfforts, window, race.activity_id);
+              const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
+              return bestEffortTile(windowLabel(window), window, entry, isRace);
+            })}
           </div>
         </div>
       )}

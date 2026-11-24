@@ -1,6 +1,6 @@
 import * as ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import type { Race, RaceBlock, RaceSplits } from "../../api/types";
+import type { BestEffort, Race, RaceBlock, RaceSplits } from "../../api/types";
 import { buildRaceReportWorkbook, type RaceReportContext, type ResolvedRaceReportData } from "./raceReport";
 
 function race(overrides: Partial<Race> = {}): Race {
@@ -79,6 +79,18 @@ function block(overrides: Partial<RaceBlock> = {}): RaceBlock {
   };
 }
 
+function bestEffort(overrides: Partial<BestEffort> = {}): BestEffort {
+  return {
+    window: "10km",
+    value: 270,
+    unit: "sec_per_km",
+    date: "2026-02-10",
+    activity_id: "act_10k",
+    activity_name: "Tuesday tempo",
+    ...overrides,
+  };
+}
+
 function splits(overrides: Partial<RaceSplits> = {}): RaceSplits {
   return {
     has_laps: true,
@@ -122,6 +134,9 @@ function ctx(overrides: Partial<RaceReportContext> = {}): RaceReportContext {
     showWeather: false,
     elevationAvailable: false,
     comparisonLabel: null,
+    allRaces: [],
+    belowDistanceWindows: [],
+    belowDistanceEfforts: [],
     ...overrides,
   };
 }
@@ -189,6 +204,41 @@ describe("buildRaceReportWorkbook", () => {
     expect(allValues).toContain("Predicted time");
     expect(allValues).toContain("Week");
     expect(allValues).toContain("Week of");
+  });
+
+  it("includes the below-distance best efforts in the Training block sheet, with activity name and race indicator", async () => {
+    const wb = buildRaceReportWorkbook(
+      ExcelJS,
+      ctx({
+        allRaces: [race({ id: "race_tuneup", activity_id: "act_10k_race" })],
+        belowDistanceWindows: ["5km", "10km"],
+        belowDistanceEfforts: [
+          bestEffort({ window: "5km", value: 250, activity_id: "act_5k", activity_name: "Tuesday tempo" }),
+          bestEffort({ window: "10km", value: 260, activity_id: "act_10k_race", activity_name: "Tune-up 10k" }),
+        ],
+      }),
+      resolved(),
+    );
+    const loaded = await roundTrip(wb);
+    const sheet = loaded.getWorksheet("Training block")!;
+    const rows = sheet.getRows(1, sheet.rowCount)!.map((r) => r.values as unknown[]);
+    const allValues = rows.flat();
+    expect(allValues).toContain("Activity");
+    expect(allValues).toContain("Tuesday tempo");
+    expect(allValues).toContain("Tune-up 10k");
+
+    const tempoRow = rows.find((r) => r.includes("Tuesday tempo"))!;
+    expect(tempoRow).toContain("No");
+    const tuneUpRow = rows.find((r) => r.includes("Tune-up 10k"))!;
+    expect(tuneUpRow).toContain("Yes");
+  });
+
+  it("omits the best-efforts table when there are no below-distance windows", async () => {
+    const wb = buildRaceReportWorkbook(ExcelJS, ctx({ belowDistanceWindows: [] }), resolved());
+    const loaded = await roundTrip(wb);
+    const sheet = loaded.getWorksheet("Training block")!;
+    const allValues = sheet.getRows(1, sheet.rowCount)!.flatMap((r) => r.values as unknown[]);
+    expect(allValues).not.toContain("Activity");
   });
 
   it("includes a Comments sheet when there are comments", async () => {

@@ -2,6 +2,7 @@ import type * as ExcelJSType from "exceljs";
 import { getRaceSplits, getRaceWeather, listRaceComments } from "../../api/races";
 import type {
   Activity,
+  BestEffort,
   Course,
   Race,
   RaceBlock,
@@ -13,6 +14,7 @@ import type {
 } from "../../api/types";
 import { formatDuration, formatPace, parseDuration } from "../../lib/format";
 import { formatGrade, SECTION_LABELS } from "../../lib/courseSections";
+import { bestEntryForWindow, formatBestEffortValue, windowLabel } from "../../lib/bestEfforts";
 import { splitRowLabel } from "../../lib/splits";
 import type { BlockChartMetric, BlockChartSport } from "./raceBlockChart";
 import {
@@ -134,7 +136,21 @@ const WEEK_HEADERS = [
   "Ride km", "Ride time", "Ride sessions", "Ride avg power (W)", "Hours", "CTL", "ATL", "Status", "Races",
 ];
 
-function addTrainingBlockSheet(wb: ExcelJSType.Workbook, block: RaceBlock) {
+const BEST_EFFORT_HEADERS = ["Window", "Time", "Pace", "Date", "Activity", "Race"];
+
+function bestEffortReportRow(window: string, entry: BestEffort | undefined, isRace: boolean): (string | number | null)[] {
+  if (!entry) return [windowLabel(window), null, null, null, null, null];
+  return [windowLabel(window), formatBestEffortValue("running_pace", window, entry.value), formatPace(entry.value), entry.date, entry.activity_name, isRace ? "Yes" : "No"];
+}
+
+function addTrainingBlockSheet(
+  wb: ExcelJSType.Workbook,
+  race: Race,
+  block: RaceBlock,
+  allRaces: Race[],
+  belowDistanceWindows: string[],
+  belowDistanceEfforts: BestEffort[],
+) {
   const sheet = wb.addWorksheet("Training block");
   const form = block.race_day_form;
   const summary: [string, string | number | null][] = [
@@ -147,7 +163,19 @@ function addTrainingBlockSheet(wb: ExcelJSType.Workbook, block: RaceBlock) {
     ["Sweat rate (L/h)", `${block.sweat_rate_l_per_h} (${block.sweat_rate_source})`],
   ];
   kvSheet(sheet, summary);
-  addTable(sheet, WEEK_HEADERS, block.weeks.map((w, i) => weekRow(w, i)), summary.length + 2);
+  const weekTableStart = summary.length + 2;
+  addTable(sheet, WEEK_HEADERS, block.weeks.map((w, i) => weekRow(w, i)), weekTableStart);
+
+  // Issue #581: same section TrainingBlockCard shows on the page, in the same sheet rather
+  // than a sheet of its own - it's a detail of this block, not independent data.
+  if (belowDistanceWindows.length > 0) {
+    const rows = belowDistanceWindows.map((window) => {
+      const entry = bestEntryForWindow(belowDistanceEfforts, window, race.activity_id);
+      const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
+      return bestEffortReportRow(window, entry, isRace);
+    });
+    addTable(sheet, BEST_EFFORT_HEADERS, rows, weekTableStart + block.weeks.length + 3);
+  }
 }
 
 function addTrainingLoadChartSheet(wb: ExcelJSType.Workbook, metric: BlockChartMetric, sport: BlockChartSport, chartImage: ArrayBuffer | null) {
@@ -260,6 +288,11 @@ export interface RaceReportContext {
   /** "{race name} {year}" (or null) for the block's comparison overlay, matching
    * TrainingBlockCard's own label - used as the chart sheet's legend text. */
   comparisonLabel: string | null;
+  /** Issue #581 - same data TrainingBlockCard's own "Best efforts in this block" section
+   * shows, fetched once by RaceDetailScreen and reused here rather than refetched. */
+  allRaces: Race[];
+  belowDistanceWindows: string[];
+  belowDistanceEfforts: BestEffort[];
 }
 
 export interface ResolvedRaceReportData {
@@ -293,7 +326,7 @@ export function buildRaceReportWorkbook(
     const data = resolved.splitsByMode[m];
     if (data) addSplitsSheet(wb, m, data);
   });
-  addTrainingBlockSheet(wb, ctx.block);
+  addTrainingBlockSheet(wb, ctx.race, ctx.block, ctx.allRaces, ctx.belowDistanceWindows, ctx.belowDistanceEfforts);
   CHART_METRICS.forEach((m) =>
     CHART_SPORTS.forEach((s) => addTrainingLoadChartSheet(wb, m, s, resolved.chartImages[chartKey(m, s)] ?? null)),
   );
