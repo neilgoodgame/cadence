@@ -145,6 +145,7 @@ function bestEffortReportRow(window: string, entry: BestEffort | undefined, isRa
 
 function addTrainingBlockSheet(
   wb: ExcelJSType.Workbook,
+  race: Race,
   block: RaceBlock,
   allRaces: Race[],
   belowDistanceWindows: string[],
@@ -169,7 +170,7 @@ function addTrainingBlockSheet(
   // than a sheet of its own - it's a detail of this block, not independent data.
   if (belowDistanceWindows.length > 0) {
     const rows = belowDistanceWindows.map((window) => {
-      const entry = bestEntryForWindow(belowDistanceEfforts, window);
+      const entry = bestEntryForWindow(belowDistanceEfforts, window, race.activity_id);
       const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
       return bestEffortReportRow(window, entry, isRace);
     });
@@ -325,7 +326,7 @@ export function buildRaceReportWorkbook(
     const data = resolved.splitsByMode[m];
     if (data) addSplitsSheet(wb, m, data);
   });
-  addTrainingBlockSheet(wb, ctx.block, ctx.allRaces, ctx.belowDistanceWindows, ctx.belowDistanceEfforts);
+  addTrainingBlockSheet(wb, ctx.race, ctx.block, ctx.allRaces, ctx.belowDistanceWindows, ctx.belowDistanceEfforts);
   CHART_METRICS.forEach((m) =>
     CHART_SPORTS.forEach((s) => addTrainingLoadChartSheet(wb, m, s, resolved.chartImages[chartKey(m, s)] ?? null)),
   );

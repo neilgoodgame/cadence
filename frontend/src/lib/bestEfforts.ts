@@ -77,21 +77,19 @@ export function standardWindowsBelow(distanceKm: number): string[] {
   return STANDARD_RUNNING_PACE_WINDOWS.filter((w) => windowToKm(w) < distanceKm);
 }
 
-/** Issue #581: the fastest in-range entry for one window, across every activity - race days
- * included. GET .../best-efforts returns each window's rows worst-first (so a plain `.find()`
- * for one window picks the slowest one, not the best - caught live when a 30 km tile showed a
- * July training run far off the athlete's actual 30 km best). An earlier version of this also
- * excluded the race's own linked activity, on the theory that a marathon's continuous splits
- * naturally set "best" times at every shorter embedded distance too - but that just hid
- * genuinely good data (a real 30 km PB run on race day); the caller's own "⚑ Race" indicator
- * (any activity_id matching one of the athlete's races) is how that context now shows up
- * instead of exclusion. Shared by TrainingBlockCard (the on-page tiles) and the download
- * report's training block sheet, so both agree on exactly which entry "the best effort in
- * this block" means. */
-export function bestEntryForWindow(data: BestEffort[], window: string): BestEffort | undefined {
+/** Issue #581: the fastest in-range entry for one window, excluding the race's own linked
+ * activity. GET .../best-efforts returns each window's rows worst-first (so a plain
+ * `.find()` for one window picks the slowest one, not the best - caught live when a 30 km
+ * tile showed a July training run far off the athlete's actual 30 km best). The race's own
+ * activity is excluded on top of that: a full marathon's continuous splits naturally set
+ * "best" times at every shorter embedded distance too, so without this a late-race window
+ * (half marathon, 30 km) nearly always shows the race itself rather than training. Shared by
+ * TrainingBlockCard (the on-page tiles) and the download report's training block sheet, so
+ * both agree on exactly which entry "the best effort in this block" means. */
+export function bestEntryForWindow(data: BestEffort[], window: string, excludeActivityId: string | null): BestEffort | undefined {
   let best: BestEffort | undefined;
   for (const entry of data) {
-    if (entry.window !== window) continue;
+    if (entry.window !== window || entry.activity_id === excludeActivityId) continue;
     if (best == null || entry.value < best.value) best = entry;
   }
   return best;

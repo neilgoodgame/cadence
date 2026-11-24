@@ -233,31 +233,6 @@ describe("buildRaceReportWorkbook", () => {
     expect(tuneUpRow).toContain("Yes");
   });
 
-  it("considers the viewed race's own activity too, flagging it as a race rather than excluding it", async () => {
-    // #581: an earlier version excluded race.activity_id entirely, on the theory that a
-    // marathon's own splits always win every shorter embedded window - that hid a genuinely
-    // good race-day PB instead of just labelling it.
-    const wb = buildRaceReportWorkbook(
-      ExcelJS,
-      ctx({
-        race: race({ activity_id: "act_race_day" }),
-        allRaces: [race({ id: "race_1", activity_id: "act_race_day" })],
-        belowDistanceWindows: ["30km"],
-        belowDistanceEfforts: [
-          bestEffort({ window: "30km", value: 300, activity_id: "act_training", activity_name: "July long run" }),
-          bestEffort({ window: "30km", value: 281, activity_id: "act_race_day", activity_name: "Race day" }),
-        ],
-      }),
-      resolved(),
-    );
-    const loaded = await roundTrip(wb);
-    const sheet = loaded.getWorksheet("Training block")!;
-    const rows = sheet.getRows(1, sheet.rowCount)!.map((r) => r.values as unknown[]);
-    const raceDayRow = rows.find((r) => r.includes("Race day"))!;
-    expect(raceDayRow).toContain("Yes");
-    expect(rows.some((r) => r.includes("July long run"))).toBe(false);
-  });
-
   it("omits the best-efforts table when there are no below-distance windows", async () => {
     const wb = buildRaceReportWorkbook(ExcelJS, ctx({ belowDistanceWindows: [] }), resolved());
     const loaded = await roundTrip(wb);

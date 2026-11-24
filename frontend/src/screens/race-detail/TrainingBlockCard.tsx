@@ -402,7 +402,7 @@ export function TrainingBlockCard({
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
             {belowDistanceWindows.map((window) => {
-              const entry = bestEntryForWindow(belowDistanceEfforts, window);
+              const entry = bestEntryForWindow(belowDistanceEfforts, window, race.activity_id);
               const isRace = entry != null && allRaces.some((r) => r.activity_id === entry.activity_id);
               return bestEffortTile(windowLabel(window), window, entry, isRace);
             })}
