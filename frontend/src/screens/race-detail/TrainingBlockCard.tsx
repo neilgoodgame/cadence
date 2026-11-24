@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { Race, RaceBlock, RaceBlockWeek } from "../../api/types";
+import { Link } from "react-router-dom";
+import type { BestEffort, Race, RaceBlock, RaceBlockWeek } from "../../api/types";
 import { formatDuration, formatPace } from "../../lib/format";
 import { listBestEfforts } from "../../api/athletes";
 import { formatBestEffortValue, standardWindowsBelow, windowLabel } from "../../lib/bestEfforts";
@@ -96,6 +97,36 @@ function totalsTile(label: string, value: string, sub?: string) {
       <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3 }}>{value}</div>
       {sub && <div style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 1 }}>{sub}</div>}
     </div>
+  );
+}
+
+/** Issue #581: a below-distance best-effort tile - like totalsTile, but linked to the source
+ * activity (when one exists) and with the per-km pace + date as the sub-line, instead of
+ * totalsTile's generic sub string. Not a totalsTile variant since the link wrapper changes its
+ * element type (an <a>, not a <div>), not just its content. */
+function bestEffortTile(label: string, window: string, entry: BestEffort | undefined) {
+  const tileStyle: React.CSSProperties = { display: "block", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", textDecoration: "none", color: "inherit" };
+  const labelEl = (
+    <div className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--ink3)" }}>
+      {label}
+    </div>
+  );
+  if (!entry) {
+    return (
+      <div key={label} style={tileStyle}>
+        {labelEl}
+        <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3, color: "var(--ink3)" }}>—</div>
+      </div>
+    );
+  }
+  return (
+    <Link key={label} to={`/activities/${entry.activity_id}`} style={tileStyle}>
+      {labelEl}
+      <div className="mono" style={{ fontSize: 16, fontWeight: 600, marginTop: 3 }}>{formatBestEffortValue("running_pace", window, entry.value)}</div>
+      <div className="mono" style={{ fontSize: 11.5, color: "var(--ink3)", marginTop: 1 }}>
+        {formatPace(entry.value)} · {shortDate(entry.date)}
+      </div>
+    </Link>
   );
 }
 
@@ -373,10 +404,9 @@ export function TrainingBlockCard({
             Best efforts in this block
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10 }}>
-            {belowDistanceWindows.map((window) => {
-              const entry = belowDistanceEfforts?.data.find((e) => e.window === window);
-              return totalsTile(windowLabel(window), entry ? formatBestEffortValue("running_pace", window, entry.value) : "—");
-            })}
+            {belowDistanceWindows.map((window) =>
+              bestEffortTile(windowLabel(window), window, belowDistanceEfforts?.data.find((e) => e.window === window)),
+            )}
           </div>
         </div>
       )}
