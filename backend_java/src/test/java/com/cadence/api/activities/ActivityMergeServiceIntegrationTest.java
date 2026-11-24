@@ -108,6 +108,47 @@ class ActivityMergeServiceIntegrationTest extends IntegrationTest {
 		assertThat(reloaded.getAvgPower()).isEqualTo(250);
 	}
 
+	/** Issue #601: merging a stream field into a long activity (thousands of Record rows) used to
+	 * save each changed row individually, one JDBC round trip at a time, in one transaction -
+	 * slow enough in production to blow past the JDBC socketTimeout on a real multi-hour ride,
+	 * surfacing as a generic failure on cadence.bioinform.co.uk. applyMergeFields now writes via
+	 * chunked bulk UPDATEs instead (ActivityMergeApplyService.BULK_UPDATE_CHUNK_SIZE = 2000); this
+	 * activity's row count is chosen to span three chunks, so a boundary off-by-one would show up
+	 * as a wrong value at a chunk edge, not just a wrong total count. It also doubles as the
+	 * regression test for a second, subtler bug in the same fix: the bulk UPDATE bypasses
+	 * Hibernate, so without explicitly evicting the now-stale managed Record entities compute()
+	 * loaded, postProcessingService.recomputeAfterMerge's avgHr recompute (same transaction, same
+	 * persistence context as this whole merge) would silently read back the old heartrate values
+	 * from the identity map instead of what bulkUpdateRecordField just wrote to the database. */
+	@Test
+	void mergesHeartrateAcrossMultipleBulkUpdateChunksAndRecomputesAvgHr() {
+		User athlete = newAthlete("merge-service-bulk-update-chunks@example.cc");
+		Activity target = newActivity(athlete, "Target");
+		Activity source = newActivity(athlete, "Source");
+		int rowCount = 5000;
+		addRecordsWith(target, rowCount, (record, t) -> {
+			record.setHeartrate(100);
+			record.setPower(200);
+		});
+		addRecordsWith(source, rowCount, (record, t) -> record.setHeartrate(150));
+
+		ActivityMergeService.MergeResult result = mergeService.runMerge(target.getId(), source.getId(),
+				List.of("heartrate"), NullPolicy.KEEP_ORIGINAL, 0, false, false);
+
+		assertThat(result.fieldCounts().get("heartrate").copied()).isEqualTo(rowCount);
+
+		List<Record> rows = recordRepository.findByActivityIdOrderByT(target.getId());
+		assertThat(rows).hasSize(rowCount);
+		// t=1999/2000 and t=3999/4000 straddle the chunk-size boundary (2000) - a chunking bug
+		// would most plausibly drop or miswrite rows right at an edge, not throughout.
+		for (int t : List.of(0, 1999, 2000, 3999, 4000, rowCount - 1)) {
+			assertThat(rows.get(t).getHeartrate()).as("heartrate at t=%d", t).isEqualTo(150);
+		}
+
+		Activity reloaded = activityRepository.findById(target.getId()).orElseThrow();
+		assertThat(reloaded.getAvgHr()).isEqualTo(150);
+	}
+
 	/** Code review finding: applyMergeFields' own Record rewrite had no awareness of an active
 	 * StreamPatch on the same field - a later unpatchStream would have restored the patch's
 	 * now-stale previousValues right back over the merge's legitimate result. The merge now
