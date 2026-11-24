@@ -2592,6 +2592,15 @@ paths:
                     Optional; only feeds the Karvonen HRR% stat, not a zone
                     reference threshold, so changing it never appears in
                     zones_recomputed.
+                best_effort_top_n_running_pace: { type: integer, minimum: 0, maximum: 50, description: See the User schema. }
+                best_effort_top_n_power:
+                  type: integer
+                  minimum: -1
+                  maximum: 50
+                  description: >
+                    See the User schema. -1 explicitly clears the override back to null (defer
+                    to best_effort_top_n) - this field can't otherwise distinguish "not sent"
+                    from "sent as null" in a PATCH body.
                 race_block_weeks: { type: integer, enum: [12, 16, 20, 24], description: See the User schema. }
                 race_block_week_defaults:
                   type: object
@@ -5201,6 +5210,27 @@ components:
           type: [integer, "null"]
           description: Optional. Only used for the Karvonen heart-rate-reserve % shown on Activity Analysis's Stats tab.
           example: 48
+        best_effort_top_n_running_pace:
+          type: integer
+          default: 0
+          description: >-
+            Issue #597: running_pace-only override of best_effort_top_n, independent of it
+            (not a fallback onto it). Defaults to 0 (unlimited), unlike best_effort_top_n's own
+            default of 10 - a pace window can be an embedded split within a much longer
+            activity (a marathon's internal 1 km or 10 mile segment), which almost never ranks
+            in an athlete's genuine all-time top 10 for that window and so was getting computed
+            and immediately trimmed away in the same request. 0 = keep all, same semantics as
+            best_effort_top_n.
+          example: 0
+        best_effort_top_n_power:
+          type: [integer, "null"]
+          description: >-
+            Issue #597: running_power/cycling_power-only override of best_effort_top_n. null
+            (the default) means "use best_effort_top_n", exactly the shared behavior before
+            this field existed - there's no known trimming gap for power, so this defaults to
+            off rather than mirroring best_effort_top_n_running_pace's unlimited default. 0 =
+            keep all for power specifically; any other value 0-50 sets an explicit override.
+          example: null
         is_coach:
           type: boolean
           description: Whether this user also coaches other users. A user can train and coach at once.

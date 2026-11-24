@@ -78,7 +78,14 @@ public record AthleteUpdateRequest(
 		Boolean thresholdDecayEnabled,
 		Integer thresholdDecayTauDays,
 		Integer thresholdDecayMinPct,
-		Integer thresholdDecayMaxPct) {
+		Integer thresholdDecayMaxPct,
+		// Issue #597: per-kind overrides of bestEffortTopN above. bestEffortTopNRunningPace has no
+		// "unset" concept - it's a plain 0-50 value, same shape as bestEffortTopN itself.
+		// bestEffortTopNPower is nullable: -1 explicitly clears the override back to null (defer
+		// to bestEffortTopN); any other value 0-50 sets an explicit override. Appended at the end
+		// for the same positional-record reason as above.
+		Integer bestEffortTopNRunningPace,
+		Integer bestEffortTopNPower) {
 
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */

@@ -61,6 +61,20 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
     # which gate Django's own built-in /admin/ site and are unrelated to this feature.
     is_admin = models.BooleanField(default=False)
     best_effort_top_n = models.PositiveSmallIntegerField(default=10)
+    # Issue #597: running_pace-only override of best_effort_top_n above - independent of it, not
+    # a fallback onto it. Defaults to 0 (unlimited) rather than mirroring best_effort_top_n's own
+    # default of 10: a pace window can be an embedded split within a much longer activity (a
+    # marathon's internal 1 km or 10 mile segment), which almost never ranks in an athlete's
+    # genuine all-time top 10 for that window and so was getting computed and immediately
+    # trimmed away by uploads/processing.py's _trim_kind_window in the same request - unlike
+    # power/HR, which have no known equivalent gap, so their shared default is left alone.
+    best_effort_top_n_running_pace = models.PositiveSmallIntegerField(default=0)
+    # Issue #597: running_power/cycling_power-only override of best_effort_top_n - None (the
+    # default) means "use best_effort_top_n", exactly the shared behavior before this field
+    # existed. Unlike best_effort_top_n_running_pace above, this defaults to off (no override):
+    # there's no known trimming gap for power, so adding this control shouldn't change any
+    # existing athlete's behavior until they opt in via Preferences.
+    best_effort_top_n_power = models.PositiveSmallIntegerField(null=True, blank=True)
     # Rolling-window threshold determination (see athletes/threshold_history.py): ftp/
     # critical_run_power/threshold_pace above are each the best qualifying effort within the
     # trailing threshold_window_days - not a one-way ratchet, a value drops automatically once
@@ -255,6 +269,18 @@ class User(PrefixedIDModel, AbstractBaseUser, PermissionsMixin):
 
     def __str__(self) -> str:
         return self.email
+
+    def best_effort_top_n_for_kind(self, kind: str) -> int:
+        """The effective top-N to apply for a given best-effort kind, resolving the per-kind
+        overrides above (issue #597) - every write-time trim and read-time cap should go
+        through this rather than reading best_effort_top_n/best_effort_top_n_running_pace/
+        best_effort_top_n_power directly, so the fallback rule (null power override defers to
+        the flat setting; HR has no override at all) only lives in one place."""
+        if kind == "running_pace":
+            return self.best_effort_top_n_running_pace
+        if kind in ("running_power", "cycling_power"):
+            return self.best_effort_top_n_power if self.best_effort_top_n_power is not None else self.best_effort_top_n
+        return self.best_effort_top_n
 
     def section_settings(self) -> SectionSettings:
         return SectionSettings(

@@ -86,6 +86,16 @@ export interface Athlete {
   /** Optional - only used for the Karvonen heart-rate-reserve % stat on Activity Analysis. */
   resting_hr: number | null;
   best_effort_top_n: number;
+  /** Issue #597: running_pace-only override of best_effort_top_n, independent of it. Defaults
+   * to 0 (unlimited), unlike best_effort_top_n's own default of 10 - a pace window can be an
+   * embedded split within a much longer activity (e.g. a marathon's internal 1 km split), which
+   * almost never ranks in an athlete's all-time top 10 and so was getting trimmed away before
+   * this existed. */
+  best_effort_top_n_running_pace: number;
+  /** Issue #597: running_power/cycling_power-only override of best_effort_top_n. null means
+   * "use best_effort_top_n" - unlike best_effort_top_n_running_pace above, this defaults to
+   * null (off): there's no known trimming gap for power. */
+  best_effort_top_n_power: number | null;
   ftp_calculation_method: FtpCalculationMethod;
   running_power_source: RunningPowerSource;
   is_coach: boolean;
@@ -633,6 +643,10 @@ export interface AthleteUpdate {
   max_hr?: number;
   resting_hr?: number;
   best_effort_top_n?: number;
+  best_effort_top_n_running_pace?: number;
+  /** -1 explicitly clears the override back to null (defer to best_effort_top_n) - this field
+   * can't otherwise distinguish "not sent" from "sent as null" in a PATCH body. */
+  best_effort_top_n_power?: number;
   ftp_calculation_method?: FtpCalculationMethod;
   running_power_source?: RunningPowerSource;
   rename_matched_activities?: boolean;

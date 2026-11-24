@@ -146,12 +146,62 @@ export function BestEffortsTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["best-efforts"] }); },
   });
 
-  const startRecompute = useCallback(async (kind?: BestEffortKind, saveFirst?: boolean) => {
+  // Issue #597: running_pace-only override of the flat setting above, independent of it -
+  // defaults to 0/unlimited (savedPaceTopN === 0 for a fresh athlete), unlike the flat
+  // setting's own default of 10, since a pace window can be an embedded split within a much
+  // longer activity that almost never ranks in an athlete's all-time top 10 and so was
+  // getting silently trimmed away before this existed.
+  const savedPaceTopN = user?.best_effort_top_n_running_pace ?? 0;
+  const [paceAllActivities, setPaceAllActivities] = useState(savedPaceTopN === 0);
+  const [paceTopN, setPaceTopN] = useState(savedPaceTopN === 0 ? 10 : savedPaceTopN);
+  const effectivePaceTopN = paceAllActivities ? 0 : paceTopN;
+
+  const isPaceDecreasing = savedPaceTopN === 0
+    ? effectivePaceTopN > 0
+    : effectivePaceTopN > 0 && effectivePaceTopN < savedPaceTopN;
+  const isPaceIncreasing = effectivePaceTopN === 0
+    ? savedPaceTopN > 0
+    : effectivePaceTopN > savedPaceTopN;
+
+  const paceSaveMutation = useMutation({
+    mutationFn: async () => {
+      const updated = await updateAthlete(user!.id, { best_effort_top_n_running_pace: effectivePaceTopN });
+      setUser(updated);
+      if (isPaceDecreasing) await trimBestEfforts(user!.id);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["best-efforts"] }); },
+  });
+
+  // Issue #597: running_power/cycling_power-only override of the flat setting - unlike pace
+  // above, this defaults OFF (null, meaning "use the flat setting"): there's no known
+  // trimming gap for power, so adding this control shouldn't change anyone's existing
+  // behavior until they opt in. A plain on/off toggle (no custom number) - the flat setting
+  // above still provides a custom cap for power when this is off.
+  const savedPowerAllActivities = (user?.best_effort_top_n_power ?? null) === 0;
+  const [powerAllActivities, setPowerAllActivities] = useState(savedPowerAllActivities);
+
+  const powerSaveMutation = useMutation({
+    mutationFn: async () => {
+      // -1 explicitly clears the override back to null ("use the flat setting") - sending
+      // null itself would be indistinguishable from not sending the field at all.
+      const updated = await updateAthlete(user!.id, { best_effort_top_n_power: powerAllActivities ? 0 : -1 });
+      setUser(updated);
+      // Always safe to trim: it re-derives each kind's own effective limit and only deletes
+      // rows that actually exceed it, so this is a no-op unless turning the override off
+      // just lowered power's effective limit back down to the flat setting.
+      await trimBestEfforts(user!.id);
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["best-efforts"] }); },
+  });
+
+  // saveFirst is a callback rather than a boolean so this one function can back every
+  // "Save & recompute" button - the flat section's own, plus the pace-specific one below -
+  // each saving its own field before the shared recompute stream starts.
+  const startRecompute = useCallback(async (kind?: BestEffortKind, saveFirst?: () => Promise<void>) => {
     setRecompute({ activeKind: kind ?? "all", current: 0, total: 0, result: null, error: false });
     try {
       if (saveFirst) {
-        const updated = await updateAthlete(user!.id, { best_effort_top_n: effectiveTopN });
-        setUser(updated);
+        await saveFirst();
       }
       for await (const event of recomputeBestEffortsStream(user!.id, kind)) {
         if (event.type === "progress") {
@@ -170,7 +220,7 @@ export function BestEffortsTab() {
     catch {
       setRecompute(s => ({ ...s, activeKind: null, error: true }));
     }
-  }, [user, effectiveTopN, setUser, qc]);
+  }, [user, qc]);
 
   const recomputeRunning = recompute.activeKind !== null;
   const recomputeElapsed = useElapsedSeconds(recomputeRunning);
@@ -307,7 +357,10 @@ export function BestEffortsTab() {
             {saveMutation.isPending ? "Saving…" : "Save"}
           </button>
           <button
-            onClick={() => startRecompute(undefined, true)}
+            onClick={() => startRecompute(undefined, async () => {
+              const updated = await updateAthlete(user!.id, { best_effort_top_n: effectiveTopN });
+              setUser(updated);
+            })}
             disabled={saveMutation.isPending || recomputeRunning}
             style={{ ...btnStyle, opacity: recomputeRunning && recompute.activeKind === "all" ? 0.6 : 1 }}
           >
@@ -342,6 +395,102 @@ export function BestEffortsTab() {
         )}
         {recomputeRunning && recompute.activeKind === "all" && recompute.total === 0 && (
           <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting… ({formatElapsed(recomputeElapsed)})</p>
+        )}
+      </section>
+
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Running pace retention</h2>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
+          Overrides the entries-per-window limit above for running pace only. Unlimited by
+          default - a pace window can be an embedded split within a much longer run (e.g. a
+          marathon's own 1 km split), which rarely ranks in your all-time top entries and so
+          would otherwise be silently discarded.
+        </p>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={paceAllActivities} onChange={e => setPaceAllActivities(e.target.checked)} />
+          Track all running pace activities (no limit)
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <input
+            type="number" min={1} max={50} value={paceTopN} disabled={paceAllActivities}
+            onChange={e => setPaceTopN(Math.max(1, Math.min(50, Number(e.target.value))))}
+            style={{ ...inputStyle, opacity: paceAllActivities ? 0.4 : 1 }}
+          />
+          <button
+            onClick={() => paceSaveMutation.mutate()}
+            disabled={paceSaveMutation.isPending || recomputeRunning || effectivePaceTopN === savedPaceTopN}
+            style={{
+              ...btnStyle,
+              background: effectivePaceTopN !== savedPaceTopN ? "var(--accent,#5b7cf7)" : "var(--elev)",
+              color: effectivePaceTopN !== savedPaceTopN ? "#fff" : "var(--ink2)",
+              borderColor: effectivePaceTopN !== savedPaceTopN ? "transparent" : "var(--line)",
+              opacity: paceSaveMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            {paceSaveMutation.isPending ? "Saving…" : "Save"}
+          </button>
+          <button
+            onClick={() => startRecompute("running_pace", async () => {
+              const updated = await updateAthlete(user!.id, { best_effort_top_n_running_pace: effectivePaceTopN });
+              setUser(updated);
+            })}
+            disabled={paceSaveMutation.isPending || recomputeRunning}
+            style={{ ...btnStyle, opacity: recomputeRunning && recompute.activeKind === "running_pace" ? 0.6 : 1 }}
+          >
+            {recomputeRunning && recompute.activeKind === "running_pace" ? "Recomputing…" : "Save & recompute pace"}
+          </button>
+          {paceSaveMutation.isSuccess && !recomputeRunning && (
+            <span style={{ fontSize: 13, color: "var(--ink3)" }}>
+              {isPaceDecreasing ? "Saved & trimmed" : "Saved"}
+            </span>
+          )}
+        </div>
+        {effectivePaceTopN !== savedPaceTopN && isPaceIncreasing && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
+            Increasing the limit requires a recompute to fill the new slots — use Save &amp; recompute pace.
+          </p>
+        )}
+        {recomputeRunning && recompute.activeKind === "running_pace" && recompute.total > 0 && (
+          <ProgressBar current={recompute.current} total={recompute.total} />
+        )}
+        {recomputeRunning && recompute.activeKind === "running_pace" && recompute.total === 0 && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>Starting…</p>
+        )}
+      </section>
+
+      <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>Power retention</h2>
+        <p style={{ fontSize: 13, color: "var(--ink2)", margin: 0, lineHeight: 1.6 }}>
+          Overrides the entries-per-window limit above for running/cycling power only. Off by
+          default - unlike pace, there's no known case where a power best effort gets silently
+          discarded, so turning this on only matters if you specifically want every power
+          activity tracked too.
+        </p>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer" }}>
+          <input type="checkbox" checked={powerAllActivities} onChange={e => setPowerAllActivities(e.target.checked)} />
+          Track all power activities (no limit)
+        </label>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <button
+            onClick={() => powerSaveMutation.mutate()}
+            disabled={powerSaveMutation.isPending || powerAllActivities === savedPowerAllActivities}
+            style={{
+              ...btnStyle,
+              background: powerAllActivities !== savedPowerAllActivities ? "var(--accent,#5b7cf7)" : "var(--elev)",
+              color: powerAllActivities !== savedPowerAllActivities ? "#fff" : "var(--ink2)",
+              borderColor: powerAllActivities !== savedPowerAllActivities ? "transparent" : "var(--line)",
+              opacity: powerSaveMutation.isPending ? 0.6 : 1,
+            }}
+          >
+            {powerSaveMutation.isPending ? "Saving…" : "Save"}
+          </button>
+          {powerSaveMutation.isSuccess && <span style={{ fontSize: 13, color: "var(--ink3)" }}>Saved</span>}
+        </div>
+        {powerAllActivities !== savedPowerAllActivities && powerAllActivities && (
+          <p style={{ fontSize: 12, color: "var(--ink3)", margin: 0 }}>
+            Enabling this requires a recompute to fill the new slots — use the running/cycling
+            power buttons in Recompute best efforts below.
+          </p>
         )}
       </section>
 

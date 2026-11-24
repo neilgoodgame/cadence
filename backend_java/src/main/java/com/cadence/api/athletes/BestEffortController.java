@@ -131,7 +131,7 @@ public class BestEffortController {
 						? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, since)
 						: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(id, kind);
 
-		int topN = userService.getById(id).getBestEffortTopN();
+		int topN = userService.getById(id).getBestEffortTopNForKind(kind);
 		List<BestEffort> capped = capPerWindow(efforts, kind == BestEffortKind.RUNNING_PACE, topN);
 
 		List<BestEffortResponse> data = capped.stream()
@@ -208,11 +208,12 @@ public class BestEffortController {
 	 * least one period's rank &lt;= 3 are returned - sorting/grouping/headline-period selection
 	 * all happen client-side (see the design handoff's TopEffortsCard.tsx).
 	 *
-	 * <p>Retention caveat: trim keeps {@code bestEffortTopN} rows per window <em>per period</em>
-	 * independently (see {@link #capPerWindow}'s own Javadoc), so ranks 1-3 are always
-	 * recoverable as long as {@code bestEffortTopN >= 3}. An athlete with it set to 1-2 just
-	 * gets ranked out of whatever smaller set actually exists - not an error case, nothing extra
-	 * to handle here.
+	 * <p>Retention caveat: trim keeps the kind's own effective top-N (see
+	 * {@link User#getBestEffortTopNForKind}) rows per window <em>per period</em> independently
+	 * (see {@link #capPerWindow}'s own Javadoc), so ranks 1-3 are always recoverable as long as
+	 * that effective value is &gt;= 3 (or unlimited). An athlete with it set to 1-2 just gets
+	 * ranked out of whatever smaller set actually exists - not an error case, nothing extra to
+	 * handle here.
 	 */
 	@Transactional
 	@GetMapping("/v1/athletes/{id}/best-efforts/ranks")
@@ -252,7 +253,7 @@ public class BestEffortController {
 				List<BestEffort> efforts = periodSince != null
 						? bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullAndDateGreaterThanEqualOrderByWindowAscValueDesc(id, kind, periodSince)
 						: bestEffortRepository.findByAthleteIdAndKindAndActivityPrimaryActivityIsNullOrderByWindowAscValueDesc(id, kind);
-				List<BestEffort> capped = capPerWindow(efforts, lowerIsBetter, athlete.getBestEffortTopN());
+				List<BestEffort> capped = capPerWindow(efforts, lowerIsBetter, athlete.getBestEffortTopNForKind(kind));
 
 				Map<String, List<BestEffort>> byWindow = capped.stream()
 						.filter(e -> windowsNeeded.contains(e.getWindow()))

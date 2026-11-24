@@ -29,6 +29,12 @@ class SectionSettingsSerializer(serializers.Serializer):
 
 class AthleteUpdateSerializer(serializers.ModelSerializer):
     best_effort_top_n = serializers.IntegerField(required=False, min_value=0, max_value=50)
+    # Issue #597: running_pace has no "unset" concept - it's a plain 0-50 value, same shape as
+    # best_effort_top_n itself. power is nullable: -1 explicitly clears the override back to
+    # null (defer to best_effort_top_n) - PATCH can't otherwise distinguish "not sent" from
+    # "sent as null" - handled in update() below rather than saved literally.
+    best_effort_top_n_running_pace = serializers.IntegerField(required=False, min_value=0, max_value=50)
+    best_effort_top_n_power = serializers.IntegerField(required=False, allow_null=True, min_value=-1, max_value=50)
     default_shoe_limit_km = serializers.IntegerField(required=False, min_value=0, max_value=5000)
     threshold_window_days = serializers.IntegerField(required=False, min_value=1, max_value=365)
     threshold_sanity_pct = serializers.IntegerField(required=False, min_value=1, max_value=100)
@@ -77,6 +83,9 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
         settings = validated_data.pop("course_section_settings", None)
         if settings is not None:
             instance.set_section_settings(settings)
+        if "best_effort_top_n_power" in validated_data:
+            power_override = validated_data.pop("best_effort_top_n_power")
+            instance.best_effort_top_n_power = None if power_override == -1 else power_override
         return super().update(instance, validated_data)
 
     class Meta:
@@ -92,6 +101,8 @@ class AthleteUpdateSerializer(serializers.ModelSerializer):
             "max_hr",
             "resting_hr",
             "best_effort_top_n",
+            "best_effort_top_n_running_pace",
+            "best_effort_top_n_power",
             "ftp_calculation_method",
             "running_power_source",
             "bike_power_source",

@@ -34,23 +34,29 @@ public class BestEffortRecomputeService {
 	}
 
 	/**
-	 * Trim existing records to the athlete's current top-N without re-reading activity data.
-	 * Use this when the limit has decreased; no-op when topN is 0 (unlimited).
+	 * Trim existing records to the athlete's current per-kind top-N (see
+	 * {@link User#getBestEffortTopNForKind}) without re-reading activity data. Use this when a
+	 * limit has decreased; each kind's own trim already no-ops when its effective topN is 0
+	 * (unlimited), so a mix of some kinds unlimited and others capped trims exactly the capped
+	 * ones.
 	 */
 	public void trimAll(User athlete) {
-		int topN = athlete.getBestEffortTopN();
-		if (topN == 0) return;
 		tx.execute(status -> {
 			for (BestEffortWindows.PowerWindow w : BestEffortWindows.HR_BEST_EFFORT_WINDOWS) {
-				computeService.trim(athlete.getId(), BestEffortKind.RUNNING_HR, w.label(), false, topN);
-				computeService.trim(athlete.getId(), BestEffortKind.CYCLING_HR, w.label(), false, topN);
+				computeService.trim(athlete.getId(), BestEffortKind.RUNNING_HR, w.label(), false,
+						athlete.getBestEffortTopNForKind(BestEffortKind.RUNNING_HR));
+				computeService.trim(athlete.getId(), BestEffortKind.CYCLING_HR, w.label(), false,
+						athlete.getBestEffortTopNForKind(BestEffortKind.CYCLING_HR));
 			}
 			for (BestEffortWindows.PowerWindow w : BestEffortWindows.POWER_BEST_EFFORT_WINDOWS) {
-				computeService.trim(athlete.getId(), BestEffortKind.RUNNING_POWER, w.label(), false, topN);
-				computeService.trim(athlete.getId(), BestEffortKind.CYCLING_POWER, w.label(), false, topN);
+				computeService.trim(athlete.getId(), BestEffortKind.RUNNING_POWER, w.label(), false,
+						athlete.getBestEffortTopNForKind(BestEffortKind.RUNNING_POWER));
+				computeService.trim(athlete.getId(), BestEffortKind.CYCLING_POWER, w.label(), false,
+						athlete.getBestEffortTopNForKind(BestEffortKind.CYCLING_POWER));
 			}
 			for (BestEffortWindows.PaceDistance d : BestEffortWindows.PACE_BEST_EFFORT_DISTANCES_KM) {
-				computeService.trim(athlete.getId(), BestEffortKind.RUNNING_PACE, d.label(), true, topN);
+				computeService.trim(athlete.getId(), BestEffortKind.RUNNING_PACE, d.label(), true,
+						athlete.getBestEffortTopNForKind(BestEffortKind.RUNNING_PACE));
 			}
 			return null;
 		});

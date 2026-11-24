@@ -123,6 +123,19 @@ public class AthleteService {
 			athlete.setBestEffortTopN(n == 0 ? 0 : Math.max(1, Math.min(50, n)));
 			changed.add("bestEffortTopN");
 		}
+		if (request.bestEffortTopNRunningPace() != null) {
+			int n = request.bestEffortTopNRunningPace();
+			athlete.setBestEffortTopNRunningPace(n == 0 ? 0 : Math.max(1, Math.min(50, n)));
+			changed.add("bestEffortTopNRunningPace");
+		}
+		if (request.bestEffortTopNPower() != null) {
+			int n = request.bestEffortTopNPower();
+			// -1 is the explicit "clear the override" sentinel (see AthleteUpdateRequest's
+			// Javadoc) - this field can't otherwise distinguish "not sent" (null) from "sent as
+			// null", so a real value is needed to ask for null.
+			athlete.setBestEffortTopNPower(n == -1 ? null : n == 0 ? 0 : Math.max(1, Math.min(50, n)));
+			changed.add("bestEffortTopNPower");
+		}
 		if (request.maxRunningPowerWatts() != null) {
 			// Bounded well below a real footpod glitch (~1500W+ observed) and well above even an
 			// elite runner's sustained power, so an accidental extreme value here can't reopen the

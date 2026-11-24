@@ -59,5 +59,10 @@ public record UserResponse(
 		boolean thresholdDecayEnabled,
 		int thresholdDecayTauDays,
 		int thresholdDecayMinPct,
-		int thresholdDecayMaxPct) {
+		int thresholdDecayMaxPct,
+		// Issue #597: per-kind overrides of bestEffortTopN above. Appended at the end - no
+		// positional UserResponse(...) construction exists anywhere (same reasoning as hrSource/
+		// cadenceSource above).
+		int bestEffortTopNRunningPace,
+		Integer bestEffortTopNPower) {
 }
