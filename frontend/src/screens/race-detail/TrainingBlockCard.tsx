@@ -100,6 +100,23 @@ function totalsTile(label: string, value: string, sub?: string) {
   );
 }
 
+/** Issue #581: the fastest in-range entry for one window, excluding the race's own linked
+ * activity. GET .../best-efforts returns each window's rows worst-first (so a plain
+ * `.find()` for one window picks the slowest one, not the best - caught live when a 30 km
+ * tile showed a July training run far off most athletes' actual 30 km best). The race's own
+ * activity is excluded on top of that: a full marathon's continuous splits naturally set
+ * "best" times at every shorter embedded distance too, so without this a late-race tile
+ * nearly always shows the race itself rather than anything from training - exactly the
+ * "matches the date of the race" bug this fixes. */
+function bestEntryForWindow(data: BestEffort[] | undefined, window: string, excludeActivityId: string | null): BestEffort | undefined {
+  let best: BestEffort | undefined;
+  for (const entry of data ?? []) {
+    if (entry.window !== window || entry.activity_id === excludeActivityId) continue;
+    if (best == null || entry.value < best.value) best = entry;
+  }
+  return best;
+}
+
 /** Issue #581: a below-distance best-effort tile - like totalsTile, but linked to the source
  * activity (when one exists) and with the per-km pace + date as the sub-line, instead of
  * totalsTile's generic sub string. Not a totalsTile variant since the link wrapper changes its
@@ -405,7 +422,7 @@ export function TrainingBlockCard({
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))", gap: 10 }}>
             {belowDistanceWindows.map((window) =>
-              bestEffortTile(windowLabel(window), window, belowDistanceEfforts?.data.find((e) => e.window === window)),
+              bestEffortTile(windowLabel(window), window, bestEntryForWindow(belowDistanceEfforts?.data, window, race.activity_id)),
             )}
           </div>
         </div>
