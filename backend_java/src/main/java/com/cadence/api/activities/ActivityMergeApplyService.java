@@ -5,12 +5,13 @@ import com.cadence.api.gear.Bike;
 import com.cadence.api.gear.Shoe;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonValue;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.Query;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -196,19 +197,33 @@ public class ActivityMergeApplyService {
 		}
 	}
 
+	// Issue #601: the fields in RECORD_FIELDS whose column is an integer, not a double precision
+	// - bulkUpdateRecordField needs this to cast each VALUES-list parameter to the right SQL
+	// type (PGJDBC can't infer it from a bare "?", including on a null value - see that method's
+	// own Javadoc).
+	private static final Set<String> INTEGER_RECORD_FIELDS = Set.of("power", "heartrate", "cadence", "humidity");
+
+	// Keeps any one bulk UPDATE statement's VALUES list (and so its parameter count/text size)
+	// to a sane ceiling rather than one statement per chunk-of-rows-worth of work - Postgres
+	// handles a VALUES list this size without issue; this is just a round number, not tuned
+	// against a real limit.
+	private static final int BULK_UPDATE_CHUNK_SIZE = 2000;
+
 	private final ActivityService activityService;
 	private final ActivityRepository activityRepository;
 	private final RecordRepository recordRepository;
+	private final EntityManager entityManager;
 
 	public ActivityMergeApplyService(ActivityService activityService, ActivityRepository activityRepository,
-			RecordRepository recordRepository) {
+			RecordRepository recordRepository, EntityManager entityManager) {
 		this.activityService = activityService;
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
+		this.entityManager = entityManager;
 	}
 
 	private record ComputeResult(Map<String, FieldRewriteCounts> counts, Map<String, Map<Integer, Object>> newStreamValues,
-			Map<String, Object> newActivityValues) {
+			Map<String, Object> newActivityValues, List<Record> targetRows) {
 	}
 
 	/** Issue #540 (phase 6): one inclusive {@code [startT, endT]} target-local range -
@@ -285,10 +300,14 @@ public class ActivityMergeApplyService {
 		Map<String, FieldRewriteCounts> counts = new LinkedHashMap<>();
 		Map<String, Map<Integer, Object>> newStreamValues = new LinkedHashMap<>();
 		Map<String, Object> newActivityValues = new LinkedHashMap<>();
+		// Populated below only if streamFields is non-empty - applyMergeFields uses this purely
+		// to evict these now-stale managed entities after its bulk native updates (see its own
+		// comment), so an empty list is exactly right whenever there's nothing to evict.
+		List<Record> targetRows = List.of();
 
 		List<String> streamFields = fields.stream().filter(RECORD_FIELDS::containsKey).toList();
 		if (!streamFields.isEmpty()) {
-			List<Record> targetRows = recordRepository.findByActivityIdOrderByT(target.getId());
+			targetRows = recordRepository.findByActivityIdOrderByT(target.getId());
 			List<Record> sourceRows = recordRepository.findByActivityIdOrderByT(source.getId());
 			boolean detectPowerDropouts = streamFields.contains("power") && zeroPolicy == ZeroPolicy.AS_NULL;
 			for (String field : streamFields) {
@@ -347,7 +366,7 @@ public class ActivityMergeApplyService {
 			}
 		}
 
-		return new ComputeResult(counts, newStreamValues, newActivityValues);
+		return new ComputeResult(counts, newStreamValues, newActivityValues, targetRows);
 	}
 
 	public Map<String, FieldRewriteCounts> previewMergeFields(String targetId, String sourceId, List<String> fields,
@@ -380,24 +399,18 @@ public class ActivityMergeApplyService {
 		ComputeResult result = compute(target, source, fields, nullPolicy, offsetSeconds, zeroPolicy);
 
 		if (!result.newStreamValues().isEmpty()) {
-			List<Record> targetRows = recordRepository.findByActivityIdOrderByT(targetId);
-			List<Record> changedRows = new ArrayList<>();
-			for (Record row : targetRows) {
-				boolean changed = false;
-				for (Map.Entry<String, Map<Integer, Object>> fieldEntry : result.newStreamValues().entrySet()) {
-					RecordFieldAccessor accessor = RECORD_FIELDS.get(fieldEntry.getKey());
-					Object newValue = fieldEntry.getValue().get(row.getT());
-					if (!Objects.equals(accessor.getter().apply(row), newValue)) {
-						accessor.setter().accept(row, newValue);
-						changed = true;
-					}
-				}
-				if (changed) {
-					changedRows.add(row);
-				}
+			for (Map.Entry<String, Map<Integer, Object>> fieldEntry : result.newStreamValues().entrySet()) {
+				bulkUpdateRecordField(targetId, fieldEntry.getKey(), fieldEntry.getValue());
 			}
-			if (!changedRows.isEmpty()) {
-				recordRepository.saveAll(changedRows);
+			// compute() loaded result.targetRows() as managed entities to read their pre-merge
+			// values. The bulk native updates above bypass Hibernate entirely, so without this,
+			// anything later in this same transaction that re-queries these same rows as entities
+			// (e.g. ActivityPostProcessingService's recompute chain, called right after this by
+			// ActivityMergeService.runMerge - see its own Javadoc) would get these stale in-memory
+			// values back from the persistence context's identity map instead of what's now
+			// actually in the database.
+			for (Record row : result.targetRows()) {
+				entityManager.detach(row);
 			}
 		}
 
@@ -409,5 +422,59 @@ public class ActivityMergeApplyService {
 		}
 
 		return result.counts();
+	}
+
+	/** Issue #601: applyMergeFields used to reload every target row as a managed entity and save
+	 * each changed one individually via recordRepository.saveAll - one JDBC round trip per row.
+	 * For a multi-hour activity's full 1 Hz stream that's thousands of round trips inside one
+	 * transaction - slow enough in production that a single statement partway through blew past
+	 * the 30s socketTimeout (application.yml's own comment explains why that exists), which then
+	 * masked the real error behind a second "Unable to rollback against JDBC Connection"
+	 * exception once Hibernate tried to roll back against the now-dead connection. This issues
+	 * one UPDATE per chunk of rows instead - keyed on (activity_id, t), same predicate shape as
+	 * the per-row statements it replaces, so no new query plan/partition-pruning behavior - for
+	 * O(rows / chunk size) round trips instead of O(rows).
+	 *
+	 * <p>Each VALUES-list parameter is cast explicitly (":: integer"/ "::double precision") since
+	 * PGJDBC can't otherwise infer a bare "?" placeholder's type - including, critically, on a
+	 * null value, which every nulled-out second (NullPolicy.OVERWRITE with no source sample)
+	 * produces. Without the cast, Postgres rejects the statement with "could not determine data
+	 * type of parameter".
+	 *
+	 * <p>Bypasses the persistence context entirely - the one caller detaches result.targetRows()
+	 * immediately after calling this, for exactly that reason (see its own comment). */
+	private void bulkUpdateRecordField(String activityId, String field, Map<Integer, Object> valuesByT) {
+		if (valuesByT.isEmpty()) {
+			return;
+		}
+		// Defense in depth: field is interpolated directly into the native SQL below. The only
+		// caller passes a key of result.newStreamValues(), which compute() only ever populates
+		// from streamFields - itself already filtered through RECORD_FIELDS.containsKey - so this
+		// can never actually be false, but a future caller passing an arbitrary field name here
+		// must fail loudly rather than build unvalidated SQL from it.
+		if (!RECORD_FIELDS.containsKey(field)) {
+			throw new IllegalArgumentException("Not a known record stream field: " + field);
+		}
+		String sqlType = INTEGER_RECORD_FIELDS.contains(field) ? "integer" : "double precision";
+		List<Map.Entry<Integer, Object>> entries = new ArrayList<>(valuesByT.entrySet());
+		for (int start = 0; start < entries.size(); start += BULK_UPDATE_CHUNK_SIZE) {
+			List<Map.Entry<Integer, Object>> chunk = entries.subList(start, Math.min(start + BULK_UPDATE_CHUNK_SIZE, entries.size()));
+			StringBuilder sql = new StringBuilder("UPDATE record AS r SET ").append(field).append(" = c.v FROM (VALUES ");
+			for (int i = 0; i < chunk.size(); i++) {
+				if (i > 0) {
+					sql.append(", ");
+				}
+				sql.append("(?::integer, ?::").append(sqlType).append(')');
+			}
+			sql.append(") AS c(t, v) WHERE r.activity_id = ?::text AND r.t = c.t");
+			Query query = entityManager.createNativeQuery(sql.toString());
+			int position = 1;
+			for (Map.Entry<Integer, Object> entry : chunk) {
+				query.setParameter(position++, entry.getKey());
+				query.setParameter(position++, entry.getValue());
+			}
+			query.setParameter(position, activityId);
+			query.executeUpdate();
+		}
 	}
 }
