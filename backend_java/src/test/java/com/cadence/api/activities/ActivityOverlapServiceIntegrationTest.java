@@ -27,6 +27,9 @@ class ActivityOverlapServiceIntegrationTest extends IntegrationTest {
 	@Autowired
 	private UserRepository userRepository;
 
+	@Autowired
+	private RecordRepository recordRepository;
+
 	private User newUser(String email) {
 		User user = new User();
 		user.setEmail(email);
@@ -291,5 +294,74 @@ class ActivityOverlapServiceIntegrationTest extends IntegrationTest {
 				athlete.getId(), null, Sport.BIKE, true, null, null, null, null, null, null, List.of(), null, null,
 				false, null, 50);
 		assertThat(crossSport.data()).hasSize(1);
+	}
+
+	private void addRecords(Activity activity, int seconds, int zeroPowerPedallingSeconds) {
+		for (int t = 0; t < seconds; t++) {
+			Record record = new Record();
+			record.setId(new RecordId(activity.getId(), activity.getStartDate().plusSeconds(t)));
+			record.setActivity(activity);
+			record.setT(t);
+			record.setPower(t < zeroPowerPedallingSeconds ? 0 : 200);
+			record.setCadence(90);
+			recordRepository.save(record);
+		}
+	}
+
+	@Test
+	void avgPowerRatioIsFlaggedWhenEitherSideHasPedallingZeroSeconds() {
+		User athlete = newUser("dropout-flag@example.com");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = newActivity(athlete, Sport.BIKE, "Zwift", start, 200);
+		Activity garmin = newActivity(athlete, Sport.BIKE, "Garmin", start, 200);
+		zwift.setAvgPower(200);
+		garmin.setAvgPower(192);
+		activityRepository.save(zwift);
+		activityRepository.save(garmin);
+		addRecords(zwift, 200, 0);
+		// 6 of 200 s (3%) read 0 W while pedalling - well over the 0.5% share.
+		addRecords(garmin, 200, 6);
+
+		CursorPage<OverlapPairResponse> page = overlapService.findOverlaps(
+				athlete.getId(), null, null, false, null, null, null, null, null, null, List.of(), null, null, false,
+				null, 50);
+
+		assertThat(page.data()).hasSize(1);
+		assertThat(page.data().get(0).avgPowerRatioDropoutAffected()).isTrue();
+	}
+
+	@Test
+	void avgPowerRatioIsNotFlaggedForCleanStreams() {
+		User athlete = newUser("dropout-clean@example.com");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		Activity zwift = newActivity(athlete, Sport.BIKE, "Zwift", start, 200);
+		Activity garmin = newActivity(athlete, Sport.BIKE, "Garmin", start, 200);
+		zwift.setAvgPower(200);
+		garmin.setAvgPower(199);
+		activityRepository.save(zwift);
+		activityRepository.save(garmin);
+		addRecords(zwift, 200, 0);
+		addRecords(garmin, 200, 0);
+
+		CursorPage<OverlapPairResponse> page = overlapService.findOverlaps(
+				athlete.getId(), null, null, false, null, null, null, null, null, null, List.of(), null, null, false,
+				null, 50);
+
+		assertThat(page.data().get(0).avgPowerRatioDropoutAffected()).isFalse();
+	}
+
+	@Test
+	void avgPowerRatioDropoutFlagIsNullWhenThereIsNoRatio() {
+		User athlete = newUser("dropout-null@example.com");
+		Instant start = Instant.parse("2026-06-01T18:00:00Z");
+		newActivity(athlete, Sport.BIKE, "Zwift", start, 3600);
+		newActivity(athlete, Sport.BIKE, "Garmin", start, 3600);
+
+		CursorPage<OverlapPairResponse> page = overlapService.findOverlaps(
+				athlete.getId(), null, null, false, null, null, null, null, null, null, List.of(), null, null, false,
+				null, 50);
+
+		assertThat(page.data().get(0).avgPowerRatio()).isNull();
+		assertThat(page.data().get(0).avgPowerRatioDropoutAffected()).isNull();
 	}
 }

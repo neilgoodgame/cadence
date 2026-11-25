@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from django.test import TestCase
 
 from accounts.models import User
+from activities.models import Record
 
 from .helpers import _bearer_client, _make_activity
 
@@ -301,3 +302,60 @@ class ActivityOverlapListViewTests(TestCase):
     def test_unknown_cursor_400(self):
         response = _bearer_client(self.athlete).get("/v1/activities/overlaps?cursor=not-valid-base64!!!")
         self.assertEqual(response.status_code, 400)
+
+
+class OverlapDropoutAffectedFlagTests(TestCase):
+    """Issue #541: avg_power_ratio_dropout_affected - a cheap hint, not a measurement."""
+
+    def setUp(self):
+        self.athlete = User.objects.create_user(email="dropout@example.cc", password="x", name="Athlete")
+        self.start = datetime(2026, 6, 1, 18, 0, 0, tzinfo=UTC)
+
+    def _ride(self, device, avg_power, zero_power_pedalling_seconds):
+        activity = _make_activity(
+            self.athlete,
+            sport="bike",
+            device=device,
+            start_date=self.start,
+            elapsed_seconds=200,
+            moving_time=200,
+            avg_power=avg_power,
+        )
+        Record.objects.bulk_create(
+            Record(
+                activity=activity,
+                t=t,
+                ts=self.start + timedelta(seconds=t),
+                power=0 if t < zero_power_pedalling_seconds else 200,
+                cadence=90,
+            )
+            for t in range(200)
+        )
+        return activity
+
+    def _pair(self):
+        response = _bearer_client(self.athlete).get("/v1/activities/overlaps")
+        self.assertEqual(response.status_code, 200)
+        return response.json()["data"][0]
+
+    def test_flagged_when_either_side_has_pedalling_zero_seconds(self):
+        self._ride("Zwift", 200, 0)
+        # 6 of 200 s (3%) read 0 W while pedalling - well over the 0.5% share.
+        self._ride("Garmin", 192, 6)
+        self.assertTrue(self._pair()["avg_power_ratio_dropout_affected"])
+
+    def test_not_flagged_for_clean_streams(self):
+        self._ride("Zwift", 200, 0)
+        self._ride("Garmin", 199, 0)
+        self.assertIs(self._pair()["avg_power_ratio_dropout_affected"], False)
+
+    def test_null_when_there_is_no_ratio(self):
+        _make_activity(
+            self.athlete, sport="bike", device="Zwift", start_date=self.start, elapsed_seconds=3600, moving_time=3600
+        )
+        _make_activity(
+            self.athlete, sport="bike", device="Garmin", start_date=self.start, elapsed_seconds=3600, moving_time=3600
+        )
+        pair = self._pair()
+        self.assertIsNone(pair["avg_power_ratio"])
+        self.assertIsNone(pair["avg_power_ratio_dropout_affected"])

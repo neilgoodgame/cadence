@@ -338,7 +338,11 @@ class ActivityMCPTools(ScopedMCPToolset):
         power, heartrate, cadence, core_temp) requires the other side to have all of the given
         fields. `status` on each pair is 'unresolved', 'duplicate' (one side's
         primary_activity_id already points at the other), or 'merged' (reserved for #501, not
-        yet produced). Paginated via next_cursor."""
+        yet produced). `avg_power_ratio` is other/anchor of the two summary avg powers; its
+        `avg_power_ratio_dropout_affected` hint (#541) is true when either side has a meaningful
+        share of seconds reading 0 W while pedalling, i.e. the ratio may be skewed by power-meter
+        dropouts - use compare_streams (which excludes dropouts) for the true ratio. Paginated via
+        next_cursor."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)

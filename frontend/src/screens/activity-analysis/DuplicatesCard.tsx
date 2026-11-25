@@ -204,7 +204,9 @@ export function DuplicatesCard({ activity }: { activity: Activity }) {
               candidate.device || "unknown source",
               candidate.elapsed_seconds != null ? formatDuration(candidate.elapsed_seconds) : null,
               `${Math.round(pair.overlap_pct)}% overlap`,
-              pair.avg_power_ratio != null ? `${pair.avg_power_ratio.toFixed(2)}x power` : null,
+              pair.avg_power_ratio != null
+                ? `${pair.avg_power_ratio.toFixed(2)}x power${pair.avg_power_ratio_dropout_affected ? " (may be dropout-affected)" : ""}`
+                : null,
             ]
               .filter(Boolean)
               .join(" · ");

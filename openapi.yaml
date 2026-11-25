@@ -5580,6 +5580,14 @@ components:
         avg_power_ratio:
           type: [number, "null"]
           description: other / anchor. Null whenever either side has no avg_power.
+        avg_power_ratio_dropout_affected:
+          type: [boolean, "null"]
+          description: >
+            Issue #541: a cheap hint that `avg_power_ratio` may be skewed by power-meter
+            dropouts (the FIT file records those as 0 W, not as missing). True when either side
+            has at least 0.5% of its duration reading 0 W while cadence is above 0. Null
+            whenever `avg_power_ratio` is null. Not a measurement - for the dropout-excluded
+            ratio, use compare_streams (`exclude_dropouts`).
         status:
           type: string
           enum: [unresolved, duplicate, merged]
