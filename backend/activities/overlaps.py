@@ -20,6 +20,20 @@ from rest_framework.exceptions import ValidationError
 
 VALID_OTHER_HAS = {"power", "heartrate", "cadence", "core_temp"}
 DEFAULT_MIN_OVERLAP_PCT = 50.0
+# Issue #541: a side's "pedalling at 0 W" seconds must reach this share of its duration before
+# avg_power_ratio is flagged as possibly dropout-affected. Kept in sync with backend_java's
+# ActivityOverlapService.DROPOUT_AFFECTED_MIN_SHARE.
+DROPOUT_AFFECTED_MIN_SHARE = 0.005
+
+# Issue #541's cheap alternative to running the real dropout detector per pair: one aggregate per
+# activity (power reads a literal 0 while cadence > 0 - pedalling with no power, unlike real
+# coasting where cadence is 0 too), run only for the activities on the returned page.
+_SUSPECT_SQL = """
+SELECT activity_id, COUNT(*)
+FROM activities_record
+WHERE activity_id = ANY(%(activity_ids)s) AND power = 0 AND cadence > 0
+GROUP BY activity_id
+"""
 
 _SQL = """
 WITH anchor_act AS (
@@ -154,7 +168,33 @@ def _activity_summary(row: dict, prefix: str) -> dict:
     }
 
 
-def _to_pair(row: dict) -> dict:
+def _load_suspect_seconds(page: list[dict]) -> dict[str, int]:
+    ids = {
+        activity_id
+        for row in page
+        if row["avg_power_ratio"] is not None
+        for activity_id in (row["anchor_id"], row["other_id"])
+    }
+    if not ids:
+        return {}
+    with connection.cursor() as cur:
+        cur.execute(_SUSPECT_SQL, {"activity_ids": list(ids)})
+        return dict(cur.fetchall())
+
+
+def _side_dropout_affected(suspect_seconds: dict[str, int], activity_id: str, duration_seconds: int | None) -> bool:
+    suspect = suspect_seconds.get(activity_id, 0)
+    return bool(suspect and duration_seconds and suspect / duration_seconds >= DROPOUT_AFFECTED_MIN_SHARE)
+
+
+def _to_pair(row: dict, suspect_seconds: dict[str, int]) -> dict:
+    ratio = row["avg_power_ratio"]
+    dropout_affected = (
+        None
+        if ratio is None
+        else _side_dropout_affected(suspect_seconds, row["anchor_id"], row["anchor_elapsed_seconds"])
+        or _side_dropout_affected(suspect_seconds, row["other_id"], row["other_elapsed_seconds"])
+    )
     return {
         "anchor": _activity_summary(row, "anchor"),
         "other": _activity_summary(row, "other"),
@@ -163,6 +203,7 @@ def _to_pair(row: dict) -> dict:
         "start_delta_seconds": row["start_delta_seconds"],
         "duration_delta_pct": row["duration_delta_pct"],
         "avg_power_ratio": row["avg_power_ratio"],
+        "avg_power_ratio_dropout_affected": dropout_affected,
         "status": row["status"],
     }
 
@@ -229,9 +270,10 @@ def find_overlaps(
     has_more = len(rows) > limit
     page = rows[:limit] if has_more else rows
     next_cursor = _encode_cursor(page[-1]) if has_more else None
+    suspect_seconds = _load_suspect_seconds(page)
     return {
         "object": "list",
         "has_more": has_more,
         "next_cursor": next_cursor,
-        "data": [_to_pair(row) for row in page],
+        "data": [_to_pair(row, suspect_seconds) for row in page],
     }

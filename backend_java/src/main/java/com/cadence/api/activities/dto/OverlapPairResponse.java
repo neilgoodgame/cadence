@@ -8,7 +8,10 @@ package com.cadence.api.activities.dto;
  *
  * <p>{@code durationDeltaPct} is relative to the anchor's own duration (not an average or the
  * shorter side) - {@code abs(anchor - other) / anchor * 100}. {@code avgPowerRatio} is
- * {@code other / anchor}, null whenever either side has no avg_power.
+ * {@code other / anchor}, null whenever either side has no avg_power. {@code
+ * avgPowerRatioDropoutAffected} (issue #541) is a cheap "may be dropout-affected" hint on that
+ * ratio - true when either side has a meaningful share of seconds reading 0 W while cadence
+ * is above 0; null whenever {@code avgPowerRatio} is null.
  */
 public record OverlapPairResponse(
 		OverlapActivitySummaryResponse anchor,
@@ -18,5 +21,6 @@ public record OverlapPairResponse(
 		long startDeltaSeconds,
 		Double durationDeltaPct,
 		Double avgPowerRatio,
+		Boolean avgPowerRatioDropoutAffected,
 		String status) {
 }

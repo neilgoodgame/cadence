@@ -183,4 +183,26 @@ public interface ActivityOverlapRepository extends Repository<Activity, String> 
 			@Param("cursorAnchorId") String cursorAnchorId,
 			@Param("cursorOtherId") String cursorOtherId,
 			@Param("limitPlusOne") int limitPlusOne);
+
+	/** One activity's count of "suspect dropout" seconds: power reads a literal 0 while cadence
+	 * is above 0 (pedalling with no power - the signature of an ANT+ power-meter dropout, as
+	 * opposed to real coasting where cadence is 0 too). Issue #541's cheap alternative to
+	 * running the real {@code DropoutDetector} per pair: a single indexed aggregate per
+	 * activity, run only for the activities on the returned page (never the full candidate
+	 * set), so {@code avgPowerRatio} can be flagged without per-second alignment. */
+	interface PedallingZeroCount {
+		String getActivityId();
+
+		Long getSuspectSeconds();
+	}
+
+	@Query(
+			value = """
+					SELECT activity_id AS activityId, COUNT(*) AS suspectSeconds
+					FROM record
+					WHERE activity_id IN (:activityIds) AND power = 0 AND cadence > 0
+					GROUP BY activity_id
+					""",
+			nativeQuery = true)
+	List<PedallingZeroCount> countPedallingZeroSeconds(@Param("activityIds") java.util.Collection<String> activityIds);
 }

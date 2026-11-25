@@ -561,6 +561,9 @@ export interface OverlapPair {
   duration_delta_pct: number | null;
   /** other / anchor. Null whenever either side has no avg_power. */
   avg_power_ratio: number | null;
+  /** True when `avg_power_ratio` may be skewed by 0 W power-meter dropouts (#541). Null whenever
+   * `avg_power_ratio` is null. */
+  avg_power_ratio_dropout_affected: boolean | null;
   /** `duplicate` when one side's primary_activity_id already points at the other. `merged` is
    * reserved for #501 (not yet produced by this endpoint). */
   status: "unresolved" | "duplicate" | "merged";

@@ -10,7 +10,10 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +24,10 @@ public class ActivityOverlapService {
 
 	private static final Set<String> VALID_OTHER_HAS = Set.of("power", "heartrate", "cadence", "core_temp");
 	private static final double DEFAULT_MIN_OVERLAP_PCT = 50.0;
+	/** Issue #541: a side's "pedalling at 0 W" seconds must reach this share of its duration
+	 * before avgPowerRatio is flagged as possibly dropout-affected. Kept in sync with backend's
+	 * activities/overlaps.py. */
+	static final double DROPOUT_AFFECTED_MIN_SHARE = 0.005;
 
 	private final ActivityOverlapRepository overlapRepository;
 
@@ -69,23 +76,54 @@ public class ActivityOverlapService {
 
 		boolean hasMore = rows.size() > limit;
 		List<ActivityOverlapRepository.OverlapRow> page = hasMore ? rows.subList(0, limit) : rows;
+		Map<String, Long> suspectSeconds = loadSuspectSeconds(page);
 		List<OverlapPairResponse> data = new ArrayList<>(page.size());
 		for (ActivityOverlapRepository.OverlapRow row : page) {
-			data.add(toResponse(row));
+			data.add(toResponse(row, suspectSeconds));
 		}
 		String nextCursor = hasMore ? encodeCursor(page.get(page.size() - 1)) : null;
 		return new CursorPage<>(hasMore, nextCursor, data);
 	}
 
-	private static OverlapPairResponse toResponse(ActivityOverlapRepository.OverlapRow row) {
+	/** Only for pairs that actually have a ratio to flag, and only for the returned page. */
+	private Map<String, Long> loadSuspectSeconds(List<ActivityOverlapRepository.OverlapRow> page) {
+		Set<String> ids = new HashSet<>();
+		for (ActivityOverlapRepository.OverlapRow row : page) {
+			if (row.getAvgPowerRatio() != null) {
+				ids.add(row.getAnchorId());
+				ids.add(row.getOtherId());
+			}
+		}
+		Map<String, Long> counts = new HashMap<>();
+		if (ids.isEmpty()) {
+			return counts;
+		}
+		for (ActivityOverlapRepository.PedallingZeroCount c : overlapRepository.countPedallingZeroSeconds(ids)) {
+			counts.put(c.getActivityId(), c.getSuspectSeconds());
+		}
+		return counts;
+	}
+
+	private static boolean sideDropoutAffected(Map<String, Long> suspectSeconds, String id, Integer durationSeconds) {
+		long suspect = suspectSeconds.getOrDefault(id, 0L);
+		return suspect > 0 && durationSeconds != null && durationSeconds > 0
+				&& (double) suspect / durationSeconds >= DROPOUT_AFFECTED_MIN_SHARE;
+	}
+
+	private static OverlapPairResponse toResponse(
+			ActivityOverlapRepository.OverlapRow row, Map<String, Long> suspectSeconds) {
 		OverlapActivitySummaryResponse anchor = new OverlapActivitySummaryResponse(
 				row.getAnchorId(), row.getAnchorName(), Sport.fromWireValue(row.getAnchorSport()), row.getAnchorDevice(),
 				row.getAnchorStartDate(), row.getAnchorElapsedSeconds(), row.getAnchorAvgPower());
 		OverlapActivitySummaryResponse other = new OverlapActivitySummaryResponse(
 				row.getOtherId(), row.getOtherName(), Sport.fromWireValue(row.getOtherSport()), row.getOtherDevice(),
 				row.getOtherStartDate(), row.getOtherElapsedSeconds(), row.getOtherAvgPower());
+		Boolean dropoutAffected = row.getAvgPowerRatio() == null ? null
+				: sideDropoutAffected(suspectSeconds, row.getAnchorId(), row.getAnchorElapsedSeconds())
+						|| sideDropoutAffected(suspectSeconds, row.getOtherId(), row.getOtherElapsedSeconds());
 		return new OverlapPairResponse(anchor, other, row.getOverlapSeconds(), row.getOverlapPct(),
-				row.getStartDeltaSeconds(), row.getDurationDeltaPct(), row.getAvgPowerRatio(), row.getStatus());
+				row.getStartDeltaSeconds(), row.getDurationDeltaPct(), row.getAvgPowerRatio(), dropoutAffected,
+				row.getStatus());
 	}
 
 	private record CursorValue(Instant anchorStartDate, String anchorId, String otherId) {
