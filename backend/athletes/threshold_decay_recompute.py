@@ -145,6 +145,71 @@ def _gather_manual_entries(
     return entries
 
 
+def _gather_corrections(athlete: User, field: str, end: date) -> list[DecayManualEntry]:
+    """Every correction-only manual row up to `end` (issue #605) - `simulate` uses them only as
+    sanity-band references, never as anchors. Includes rows before `from_date` on purpose:
+    the latest of those can still be the live reference when the resimulation starts."""
+    rows = ThresholdHistory.objects.filter(
+        athlete=athlete, field=field, kind="manual", is_correction_only=True, effective_from__lte=end
+    ).order_by("effective_from", "id")
+    return [DecayManualEntry(date=row.effective_from, value=_row_value(field, row)) for row in rows]
+
+
+def _simulate_suffix(
+    athlete: User,
+    field: str,
+    from_date: date,
+    end: date,
+    settings: DecaySettings,
+    new_manual_entry: DecayManualEntry | None,
+) -> list[Step]:
+    """Gathers every input from the real ledger and runs `simulate` - the read-only half shared
+    by resimulate_suffix, gather_preview_steps and qualification_diff_from, so they can never
+    disagree about what a resimulation would produce."""
+    seed_v = _seed_v(athlete, field, from_date)
+    seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
+
+    candidates = _gather_candidates(athlete, field, from_date, end)
+    manual_entries = _gather_manual_entries(athlete, field, from_date, end, new_manual_entry)
+    corrections = _gather_corrections(athlete, field, end)
+
+    load_by_day = (
+        load_by_day_for_athlete(
+            athlete, field, seed_anchor_value, athlete.lthr, from_date - timedelta(days=settings.window_days), end
+        )
+        if seed_anchor_value
+        else {}
+    )
+
+    return simulate(
+        field,
+        settings,
+        seed_anchor_value,
+        seed_anchor_date,
+        seed_anchor_kind,
+        candidates,
+        manual_entries,
+        load_by_day,
+        from_date,
+        end,
+        seed_v_value=seed_v,
+        corrections=corrections,
+    )
+
+
+def qualification_diff_from(athlete: User, field: str, from_date: date, end: date) -> list[QualificationDiff]:
+    """Read-only (issue #605): the ledger slots where resimulating from `from_date` would pick a
+    different measured winner than what's stored - resimulate_suffix's collect_qualification_diff
+    without the write. For record_manual_value's preview of a decay-enabled athlete's
+    correction-only edit, which (like the decay-off case) never resimulates for real; the caller
+    must already have inserted the correction row so `_gather_corrections` sees it."""
+    old_measured_rows = list(
+        ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured", current_from__gte=from_date)
+    )
+    steps = _simulate_suffix(athlete, field, from_date, end, _decay_settings_for(athlete), None)
+    return _qualification_diff(field, old_measured_rows, [step for step in steps if step.kind == "measured"])
+
+
 def resimulate_suffix(
     athlete: User,
     field: str,
@@ -195,33 +260,7 @@ def resimulate_suffix(
             else []
         )
 
-        seed_v = _seed_v(athlete, field, from_date)
-        seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
-
-        candidates = _gather_candidates(athlete, field, from_date, end)
-        manual_entries = _gather_manual_entries(athlete, field, from_date, end, new_manual_entry)
-
-        load_by_day = (
-            load_by_day_for_athlete(
-                athlete, field, seed_anchor_value, athlete.lthr, from_date - timedelta(days=settings.window_days), end
-            )
-            if seed_anchor_value
-            else {}
-        )
-
-        steps = simulate(
-            field,
-            settings,
-            seed_anchor_value,
-            seed_anchor_date,
-            seed_anchor_kind,
-            candidates,
-            manual_entries,
-            load_by_day,
-            from_date,
-            end,
-            seed_v_value=seed_v,
-        )
+        steps = _simulate_suffix(athlete, field, from_date, end, settings, new_manual_entry)
 
         would_requalify = (
             _qualification_diff(field, old_measured_rows, [step for step in steps if step.kind == "measured"])
@@ -315,32 +354,4 @@ def gather_preview_steps(
         max_pct=max_pct if max_pct is not None else base_settings.max_pct,
         enabled=True,
     )
-
-    seed_v = _seed_v(athlete, field, from_date)
-    seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
-
-    candidates = _gather_candidates(athlete, field, from_date, end)
-    manual_entries = _gather_manual_entries(athlete, field, from_date, end, None)
-
-    load_by_day = (
-        load_by_day_for_athlete(
-            athlete, field, seed_anchor_value, athlete.lthr, from_date - timedelta(days=settings.window_days), end
-        )
-        if seed_anchor_value
-        else {}
-    )
-
-    steps = simulate(
-        field,
-        settings,
-        seed_anchor_value,
-        seed_anchor_date,
-        seed_anchor_kind,
-        candidates,
-        manual_entries,
-        load_by_day,
-        from_date,
-        end,
-        seed_v_value=seed_v,
-    )
-    return steps, settings
+    return _simulate_suffix(athlete, field, from_date, end, settings, None), settings

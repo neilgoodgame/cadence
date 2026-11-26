@@ -43,6 +43,7 @@ class GoldenFixtureTests(SimpleTestCase):
                     scenario["load_by_day"],
                     scenario["start"],
                     scenario["end"],
+                    corrections=scenario["corrections"],
                 )
                 actual = [
                     {

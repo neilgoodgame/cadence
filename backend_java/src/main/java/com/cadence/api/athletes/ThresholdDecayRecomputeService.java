@@ -165,6 +165,58 @@ public class ThresholdDecayRecomputeService {
 		return entries;
 	}
 
+	/** Every correction-only manual row up to {@code end} (issue #605) - simulate() uses them only
+	 * as sanity-band references, never as anchors. Includes rows before fromDate on purpose: the
+	 * latest of those can still be the live reference when the resimulation starts. */
+	private List<ThresholdDecay.ManualEntry> gatherCorrections(User athlete, ThresholdField field, LocalDate end) {
+		List<ThresholdDecay.ManualEntry> corrections = new ArrayList<>();
+		for (ThresholdHistory row : thresholdHistoryRepository.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(
+				athlete.getId(), field, ThresholdHistoryKind.MANUAL)) {
+			if (!row.getEffectiveFrom().isAfter(end)) {
+				corrections.add(new ThresholdDecay.ManualEntry(row.getEffectiveFrom(), rowValue(field, row)));
+			}
+		}
+		return corrections;
+	}
+
+	/** Gathers every input from the real ledger and runs simulate() - the read-only half shared
+	 * by resimulateSuffix, gatherPreviewSteps and qualificationDiffFrom, so they can never
+	 * disagree about what a resimulation would produce. */
+	private List<ThresholdDecay.Step> simulateSuffix(User athlete, ThresholdField field, LocalDate fromDate, LocalDate end,
+			ThresholdDecay.DecaySettings settings, ThresholdDecay.ManualEntry newManualEntry) {
+		Double seedV = seedV(athlete, field, fromDate);
+		SeedAnchor anchor = seedAnchor(athlete, field, fromDate);
+
+		List<ThresholdDecay.DecayCandidate> candidates = gatherCandidates(athlete, field, fromDate, end);
+		List<ThresholdDecay.ManualEntry> manualEntries = gatherManualEntries(athlete, field, fromDate, end, newManualEntry);
+		List<ThresholdDecay.ManualEntry> corrections = gatherCorrections(athlete, field, end);
+
+		Map<LocalDate, Double> loadByDay = anchor.value() != null
+				? decayLoadService.loadByDayForAthlete(athlete, field, anchor.value(),
+						athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null,
+						fromDate.minusDays(settings.windowDays()), end)
+				: Map.of();
+
+		return ThresholdDecay.simulate(field, settings, anchor.value(), anchor.date(),
+				anchor.kind() != null ? anchor.kind().wireValue() : null, candidates, manualEntries, loadByDay, fromDate, end,
+				seedV, corrections);
+	}
+
+	/** Read-only (issue #605): the ledger slots where resimulating from {@code fromDate} would
+	 * pick a different measured winner than what's stored - resimulateSuffix's
+	 * collectQualificationDiff without the write. For recordManualValue's preview of a
+	 * decay-enabled athlete's correction-only edit, which (like the decay-off case) never
+	 * resimulates for real; the caller must already have saved the correction row so
+	 * gatherCorrections sees it. */
+	public List<ThresholdHistoryService.QualificationDiff> qualificationDiffFrom(
+			User athlete, ThresholdField field, LocalDate fromDate, LocalDate end) {
+		List<ThresholdHistory> oldMeasuredRows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
+						athlete.getId(), field, ThresholdHistoryKind.MEASURED, fromDate);
+		List<ThresholdDecay.Step> steps = simulateSuffix(athlete, field, fromDate, end, decaySettingsFor(athlete), null);
+		return qualificationDiff(field, oldMeasuredRows, steps);
+	}
+
 	public ResimulateResult resimulateSuffix(User athlete, ThresholdField field, LocalDate fromDate) {
 		return resimulateSuffix(athlete, field, fromDate, LocalDate.now(), null, null, true, false, false);
 	}
@@ -207,20 +259,7 @@ public class ThresholdDecayRecomputeService {
 				: List.of();
 
 		ThresholdDecay.DecaySettings settings = decaySettingsFor(athlete);
-		Double seedV = seedV(athlete, field, fromDate);
-		SeedAnchor anchor = seedAnchor(athlete, field, fromDate);
-
-		List<ThresholdDecay.DecayCandidate> candidates = gatherCandidates(athlete, field, fromDate, end);
-		List<ThresholdDecay.ManualEntry> manualEntries = gatherManualEntries(athlete, field, fromDate, end, newManualEntry);
-
-		Map<LocalDate, Double> loadByDay = anchor.value() != null
-				? decayLoadService.loadByDayForAthlete(athlete, field, anchor.value(),
-						athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null,
-						fromDate.minusDays(settings.windowDays()), end)
-				: Map.of();
-
-		List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(field, settings, anchor.value(), anchor.date(),
-				anchor.kind() != null ? anchor.kind().wireValue() : null, candidates, manualEntries, loadByDay, fromDate, end, seedV);
+		List<ThresholdDecay.Step> steps = simulateSuffix(athlete, field, fromDate, end, settings, newManualEntry);
 
 		List<ThresholdHistoryService.QualificationDiff> wouldRequalify = collectQualificationDiff
 				? qualificationDiff(field, oldMeasuredRows, steps)
@@ -358,23 +397,7 @@ public class ThresholdDecayRecomputeService {
 		ThresholdDecay.DecaySettings settings = new ThresholdDecay.DecaySettings(base.windowDays(), base.sanityPct(),
 				tauDays != null ? tauDays : base.tauDays(), minPct != null ? minPct : base.minPct(),
 				maxPct != null ? maxPct : base.maxPct(), true);
-
-		Double seedV = seedV(athlete, field, fromDate);
-		SeedAnchor anchor = seedAnchor(athlete, field, fromDate);
-
-		List<ThresholdDecay.DecayCandidate> candidates = gatherCandidates(athlete, field, fromDate, end);
-		List<ThresholdDecay.ManualEntry> manualEntries = gatherManualEntries(athlete, field, fromDate, end, null);
-
-		Map<LocalDate, Double> loadByDay = anchor.value() != null
-				? decayLoadService.loadByDayForAthlete(athlete, field, anchor.value(),
-						athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null,
-						fromDate.minusDays(settings.windowDays()), end)
-				: Map.of();
-
-		List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(field, settings, anchor.value(), anchor.date(),
-				anchor.kind() != null ? anchor.kind().wireValue() : null, candidates, manualEntries, loadByDay, fromDate, end,
-				seedV);
-		return new PreviewResult(steps, settings);
+		return new PreviewResult(simulateSuffix(athlete, field, fromDate, end, settings, null), settings);
 	}
 
 	/** issue #485: anchorValue/anchorEffectiveFrom/decayingSince/target for a currently-decaying

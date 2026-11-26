@@ -119,6 +119,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 100.0,
     "2025-12-28": 100.0,
@@ -477,6 +478,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 50.0,
     "2025-12-28": 50.0,
@@ -912,6 +914,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -1300,6 +1303,7 @@
    "seed_anchor_kind": "measured",
    "candidates": [],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -1695,6 +1699,7 @@
    "seed_anchor_kind": "measured",
    "candidates": [],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -2139,6 +2144,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -2541,6 +2547,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -2950,6 +2957,7 @@
      "already_recorded": false
     }
    ],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -3176,6 +3184,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {
     "2025-12-27": 0.0,
     "2025-12-28": 0.0,
@@ -3541,6 +3550,7 @@
     }
    ],
    "manual_entries": [],
+   "corrections": [],
    "load_by_day": {},
    "start": "2026-01-01",
    "end": "2026-05-31",
@@ -3558,6 +3568,604 @@
      "activity_id": "act_b",
      "effective_from": "2026-05-21",
      "current_from": "2026-05-23"
+    }
+   ]
+  },
+  {
+   "name": "correction_sanity_reference_in_range",
+   "field": "ftp",
+   "settings": {
+    "window_days": 30,
+    "sanity_pct": 20,
+    "tau_days": 10,
+    "min_pct": 3,
+    "max_pct": 12,
+    "enabled": true
+   },
+   "seed_anchor_value": 300.0,
+   "seed_anchor_date": "2026-01-01",
+   "seed_anchor_kind": "measured",
+   "candidates": [
+    {
+     "date": "2026-01-06",
+     "implied_value": 390.0,
+     "activity_id": "act_ok",
+     "accepted": false
+    },
+    {
+     "date": "2026-01-09",
+     "implied_value": 470.0,
+     "activity_id": "act_too_far",
+     "accepted": false
+    }
+   ],
+   "manual_entries": [],
+   "corrections": [
+    {
+     "date": "2026-01-03",
+     "value": 400.0,
+     "activity_id": null,
+     "already_recorded": false
+    }
+   ],
+   "load_by_day": {},
+   "start": "2026-01-01",
+   "end": "2026-03-02",
+   "steps": [
+    {
+     "value": 390.0,
+     "kind": "measured",
+     "activity_id": "act_ok",
+     "effective_from": "2026-01-06",
+     "current_from": "2026-01-06"
+    },
+    {
+     "value": 386.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-06",
+     "current_from": "2026-02-06"
+    },
+    {
+     "value": 382.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-07",
+     "current_from": "2026-02-07"
+    },
+    {
+     "value": 378.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-08",
+     "current_from": "2026-02-08"
+    },
+    {
+     "value": 375.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-09",
+     "current_from": "2026-02-09"
+    },
+    {
+     "value": 372.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-10",
+     "current_from": "2026-02-10"
+    },
+    {
+     "value": 369.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-11",
+     "current_from": "2026-02-11"
+    },
+    {
+     "value": 366.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-12",
+     "current_from": "2026-02-12"
+    },
+    {
+     "value": 364.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-13",
+     "current_from": "2026-02-13"
+    },
+    {
+     "value": 362.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-14",
+     "current_from": "2026-02-14"
+    },
+    {
+     "value": 360.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-15",
+     "current_from": "2026-02-15"
+    },
+    {
+     "value": 359.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-16",
+     "current_from": "2026-02-16"
+    },
+    {
+     "value": 357.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-17",
+     "current_from": "2026-02-17"
+    },
+    {
+     "value": 356.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-18",
+     "current_from": "2026-02-18"
+    },
+    {
+     "value": 355.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-19",
+     "current_from": "2026-02-19"
+    },
+    {
+     "value": 354.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-20",
+     "current_from": "2026-02-20"
+    },
+    {
+     "value": 353.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-21",
+     "current_from": "2026-02-21"
+    },
+    {
+     "value": 352.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-22",
+     "current_from": "2026-02-22"
+    },
+    {
+     "value": 351.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-23",
+     "current_from": "2026-02-23"
+    },
+    {
+     "value": 350.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-24",
+     "current_from": "2026-02-24"
+    },
+    {
+     "value": 349.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-26",
+     "current_from": "2026-02-26"
+    },
+    {
+     "value": 348.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-27",
+     "current_from": "2026-02-27"
+    },
+    {
+     "value": 347.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-03-01",
+     "current_from": "2026-03-01"
+    }
+   ]
+  },
+  {
+   "name": "correction_sanity_reference_before_start",
+   "field": "ftp",
+   "settings": {
+    "window_days": 30,
+    "sanity_pct": 20,
+    "tau_days": 10,
+    "min_pct": 3,
+    "max_pct": 12,
+    "enabled": true
+   },
+   "seed_anchor_value": 300.0,
+   "seed_anchor_date": "2026-01-01",
+   "seed_anchor_kind": "measured",
+   "candidates": [
+    {
+     "date": "2026-01-06",
+     "implied_value": 390.0,
+     "activity_id": "act_ok",
+     "accepted": false
+    },
+    {
+     "date": "2026-01-09",
+     "implied_value": 470.0,
+     "activity_id": "act_too_far",
+     "accepted": false
+    }
+   ],
+   "manual_entries": [],
+   "corrections": [
+    {
+     "date": "2026-01-03",
+     "value": 400.0,
+     "activity_id": null,
+     "already_recorded": false
+    }
+   ],
+   "load_by_day": {},
+   "start": "2026-01-04",
+   "end": "2026-03-02",
+   "steps": [
+    {
+     "value": 390.0,
+     "kind": "measured",
+     "activity_id": "act_ok",
+     "effective_from": "2026-01-06",
+     "current_from": "2026-01-06"
+    },
+    {
+     "value": 386.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-06",
+     "current_from": "2026-02-06"
+    },
+    {
+     "value": 382.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-07",
+     "current_from": "2026-02-07"
+    },
+    {
+     "value": 378.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-08",
+     "current_from": "2026-02-08"
+    },
+    {
+     "value": 375.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-09",
+     "current_from": "2026-02-09"
+    },
+    {
+     "value": 372.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-10",
+     "current_from": "2026-02-10"
+    },
+    {
+     "value": 369.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-11",
+     "current_from": "2026-02-11"
+    },
+    {
+     "value": 366.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-12",
+     "current_from": "2026-02-12"
+    },
+    {
+     "value": 364.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-13",
+     "current_from": "2026-02-13"
+    },
+    {
+     "value": 362.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-14",
+     "current_from": "2026-02-14"
+    },
+    {
+     "value": 360.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-15",
+     "current_from": "2026-02-15"
+    },
+    {
+     "value": 359.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-16",
+     "current_from": "2026-02-16"
+    },
+    {
+     "value": 357.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-17",
+     "current_from": "2026-02-17"
+    },
+    {
+     "value": 356.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-18",
+     "current_from": "2026-02-18"
+    },
+    {
+     "value": 355.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-19",
+     "current_from": "2026-02-19"
+    },
+    {
+     "value": 354.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-20",
+     "current_from": "2026-02-20"
+    },
+    {
+     "value": 353.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-21",
+     "current_from": "2026-02-21"
+    },
+    {
+     "value": 352.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-22",
+     "current_from": "2026-02-22"
+    },
+    {
+     "value": 351.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-23",
+     "current_from": "2026-02-23"
+    },
+    {
+     "value": 350.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-24",
+     "current_from": "2026-02-24"
+    },
+    {
+     "value": 349.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-26",
+     "current_from": "2026-02-26"
+    },
+    {
+     "value": 348.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-27",
+     "current_from": "2026-02-27"
+    },
+    {
+     "value": 347.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-03-01",
+     "current_from": "2026-03-01"
+    }
+   ]
+  },
+  {
+   "name": "correction_older_than_seed_anchor_is_ignored",
+   "field": "ftp",
+   "settings": {
+    "window_days": 30,
+    "sanity_pct": 20,
+    "tau_days": 10,
+    "min_pct": 3,
+    "max_pct": 12,
+    "enabled": true
+   },
+   "seed_anchor_value": 300.0,
+   "seed_anchor_date": "2026-01-01",
+   "seed_anchor_kind": "measured",
+   "candidates": [
+    {
+     "date": "2026-01-06",
+     "implied_value": 390.0,
+     "activity_id": "act_ok",
+     "accepted": false
+    },
+    {
+     "date": "2026-01-09",
+     "implied_value": 470.0,
+     "activity_id": "act_too_far",
+     "accepted": false
+    }
+   ],
+   "manual_entries": [],
+   "corrections": [
+    {
+     "date": "2025-12-22",
+     "value": 400.0,
+     "activity_id": null,
+     "already_recorded": false
+    }
+   ],
+   "load_by_day": {},
+   "start": "2026-01-04",
+   "end": "2026-03-02",
+   "steps": [
+    {
+     "value": 297.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-01",
+     "current_from": "2026-02-01"
+    },
+    {
+     "value": 293.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-02",
+     "current_from": "2026-02-02"
+    },
+    {
+     "value": 291.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-03",
+     "current_from": "2026-02-03"
+    },
+    {
+     "value": 288.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-04",
+     "current_from": "2026-02-04"
+    },
+    {
+     "value": 286.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-05",
+     "current_from": "2026-02-05"
+    },
+    {
+     "value": 284.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-06",
+     "current_from": "2026-02-06"
+    },
+    {
+     "value": 282.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-07",
+     "current_from": "2026-02-07"
+    },
+    {
+     "value": 280.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-08",
+     "current_from": "2026-02-08"
+    },
+    {
+     "value": 279.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-09",
+     "current_from": "2026-02-09"
+    },
+    {
+     "value": 277.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-10",
+     "current_from": "2026-02-10"
+    },
+    {
+     "value": 276.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-11",
+     "current_from": "2026-02-11"
+    },
+    {
+     "value": 275.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-12",
+     "current_from": "2026-02-12"
+    },
+    {
+     "value": 274.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-13",
+     "current_from": "2026-02-13"
+    },
+    {
+     "value": 273.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-14",
+     "current_from": "2026-02-14"
+    },
+    {
+     "value": 272.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-15",
+     "current_from": "2026-02-15"
+    },
+    {
+     "value": 271.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-16",
+     "current_from": "2026-02-16"
+    },
+    {
+     "value": 270.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-18",
+     "current_from": "2026-02-18"
+    },
+    {
+     "value": 269.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-19",
+     "current_from": "2026-02-19"
+    },
+    {
+     "value": 268.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-21",
+     "current_from": "2026-02-21"
+    },
+    {
+     "value": 267.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-24",
+     "current_from": "2026-02-24"
+    },
+    {
+     "value": 266.0,
+     "kind": "decayed",
+     "activity_id": null,
+     "effective_from": "2026-02-27",
+     "current_from": "2026-02-27"
     }
    ]
   }

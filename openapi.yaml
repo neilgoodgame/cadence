@@ -6274,8 +6274,9 @@ components:
             Populated only when preview=true - the ledger slots (by current_from) where running
             a full rebuild from this edit's own date would pick a different winner than what's
             currently stored, i.e. this correction would also change which later ride(s) qualify.
-            Always empty for a decay-enabled athlete's correction-only edit (one that doesn't
-            become the live value) - that combination isn't detectable yet.
+            Covers every combination of decay on/off and live/correction-only edits; a
+            correction-only edit only ever acts as the sanity-band reference for later rides,
+            never as the value itself.
           items:
             $ref: "#/components/schemas/QualificationDiff"
 

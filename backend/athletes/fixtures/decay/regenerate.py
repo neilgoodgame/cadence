@@ -39,6 +39,7 @@ def main() -> None:
             scenario["load_by_day"],
             scenario["start"],
             scenario["end"],
+            corrections=scenario["corrections"],
         )
         cases.append(
             {
@@ -50,6 +51,7 @@ def main() -> None:
                 "seed_anchor_kind": scenario["seed_anchor_kind"],
                 "candidates": [asdict(c) for c in scenario["candidates"]],
                 "manual_entries": [asdict(m) for m in scenario["manual_entries"]],
+                "corrections": [asdict(m) for m in scenario["corrections"]],
                 "load_by_day": {_date(d): v for d, v in scenario["load_by_day"].items()},
                 "start": _date(scenario["start"]),
                 "end": _date(scenario["end"]),
@@ -71,7 +73,7 @@ def main() -> None:
     for case in cases:
         for c in case["candidates"]:
             c["date"] = _date(c["date"])
-        for m in case["manual_entries"]:
+        for m in case["manual_entries"] + case["corrections"]:
             m["date"] = _date(m["date"])
 
     (HERE / "expected.json").write_text(json.dumps({"cases": cases}, indent=1) + "\n")

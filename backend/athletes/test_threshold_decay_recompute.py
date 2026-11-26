@@ -240,6 +240,66 @@ class RecordManualValueWiringTests(TestCase):
         athlete.refresh_from_db()
         self.assertEqual(athlete.ftp, 250)
 
+    def _under_read_anchor_and_probe(self):
+        """Issue #605 setup: a 300 W anchor (an under-reading sensor) and a 390 W ride four days
+        later that's 30% off it - rejected by the 20% band, so the ledger as of `as_of` has no
+        row for it."""
+        athlete = _decay_athlete(threshold_window_days=10, threshold_sanity_pct=20)
+        _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=316)  # implies 300
+        probe = _make_power_activity(athlete, datetime(2026, 1, 5, 7, 0, tzinfo=UTC), power=411)  # implies 390
+        as_of = date(2026, 1, 20)
+        resimulate_suffix(athlete, "ftp", date(2026, 1, 1), end=as_of)
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", source_activity=probe).exists())
+        return athlete, probe, as_of
+
+    def test_correction_only_preview_reports_a_ride_that_would_requalify(self):
+        """Issue #605: before, would_requalify was always empty for this combination."""
+        athlete, probe, as_of = self._under_read_anchor_and_probe()
+        rows_before = list(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").values_list("pk", flat=True))
+
+        # Jan 2 is 18 days before as_of, past the 10-day window - stale on arrival, so correction-only.
+        result = record_manual_value(athlete, "ftp", 400, effective_from=date(2026, 1, 2), as_of=as_of, preview=True)
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(len(result.would_requalify), 1)
+        diff = result.would_requalify[0]
+        self.assertIsNone(diff.old_activity_id)
+        self.assertEqual(diff.new_activity_id, probe.id)
+        self.assertEqual(diff.new_value, 390)
+        self.assertEqual(diff.current_from, date(2026, 1, 5))
+        # Preview: nothing persisted, not even the correction row itself.
+        self.assertEqual(
+            list(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").values_list("pk", flat=True)),
+            rows_before,
+        )
+
+    def test_correction_only_preview_is_empty_when_nothing_would_requalify(self):
+        athlete, _probe, as_of = self._under_read_anchor_and_probe()
+
+        # 310 is barely a correction - the probe is still 25.8% off it.
+        result = record_manual_value(athlete, "ftp", 310, effective_from=date(2026, 1, 2), as_of=as_of, preview=True)
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(result.would_requalify, [])
+
+    def test_real_resimulation_honours_a_stored_correction(self):
+        """The preview's prediction holds for a real rebuild: once the correction row is stored,
+        resimulating actually writes the probe's row - and the correction itself never becomes a
+        ledger value or the live value."""
+        athlete, probe, as_of = self._under_read_anchor_and_probe()
+        record_manual_value(athlete, "ftp", 400, effective_from=date(2026, 1, 2), as_of=as_of)
+
+        resimulate_suffix(athlete, "ftp", date(2026, 1, 2), end=as_of)
+
+        probe_row = ThresholdHistory.objects.get(athlete=athlete, field="ftp", source_activity=probe)
+        self.assertEqual(probe_row.value_numeric, 390)
+        self.assertEqual(probe_row.kind, "measured")
+        self.assertFalse(
+            ThresholdHistory.objects.filter(athlete=athlete, field="ftp", value_numeric=400)
+            .exclude(is_correction_only=True)
+            .exists()
+        )
+
     def test_preview_rolls_back_everything_including_the_resimulated_rows(self):
         athlete = _decay_athlete()
         before_count = ThresholdHistory.objects.filter(athlete=athlete, field="ftp").count()

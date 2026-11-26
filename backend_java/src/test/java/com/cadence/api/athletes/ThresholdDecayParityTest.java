@@ -83,7 +83,8 @@ class ThresholdDecayParityTest {
 
 			List<ThresholdDecay.Step> steps = ThresholdDecay.simulate(
 					field, settings, seedAnchorValue, seedAnchorDate, seedAnchorKind, candidates(c.get("candidates")),
-					manualEntries(c.get("manual_entries")), loadByDay(c.get("load_by_day")), date(c.get("start")), date(c.get("end")));
+					manualEntries(c.get("manual_entries")), loadByDay(c.get("load_by_day")), date(c.get("start")), date(c.get("end")),
+					null, manualEntries(c.get("corrections")));
 
 			JsonNode expected = c.get("steps");
 			assertThat(steps).as(name).hasSize(expected.size());

@@ -189,11 +189,28 @@ public final class ThresholdDecay {
 			ThresholdField field, DecaySettings settings, Double seedAnchorValue, LocalDate seedAnchorDate,
 			String seedAnchorKind, List<DecayCandidate> candidates, List<ManualEntry> manualEntries,
 			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end, Double seedVValue) {
+		return simulate(field, settings, seedAnchorValue, seedAnchorDate, seedAnchorKind, candidates, manualEntries,
+				loadByDay, start, end, seedVValue, List.of());
+	}
+
+	/** As the eleven-argument overload, plus {@code corrections} (issue #605): correction-only
+	 * manual rows, any date - including before {@code start}, since the latest of those can still
+	 * be the live reference (see {@link #simulateEnabled}). They only ever act as the sanity-band
+	 * reference, never as an anchor or a value, so they never emit a {@link Step}. Only honoured
+	 * in enabled mode: the disabled branch is never reached by a real caller (every one either
+	 * only runs for a decay-enabled athlete or forces enabled=true). */
+	public static List<Step> simulate(
+			ThresholdField field, DecaySettings settings, Double seedAnchorValue, LocalDate seedAnchorDate,
+			String seedAnchorKind, List<DecayCandidate> candidates, List<ManualEntry> manualEntries,
+			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end, Double seedVValue,
+			List<ManualEntry> corrections) {
 		Map<LocalDate, List<DecayCandidate>> candidatesByDay = groupByDay(candidates);
 		Map<LocalDate, ManualEntry> manualByDay = indexByDay(manualEntries);
 		if (settings.enabled()) {
+			List<ManualEntry> sortedCorrections = new ArrayList<>(corrections != null ? corrections : List.of());
+			sortedCorrections.sort(Comparator.comparing(ManualEntry::date));
 			return simulateEnabled(field, settings, seedAnchorValue, seedAnchorDate, candidatesByDay, manualByDay,
-					loadByDay, start, end, seedVValue);
+					loadByDay, start, end, seedVValue, sortedCorrections);
 		}
 		return simulateDisabled(
 				field, settings, seedAnchorValue, seedAnchorDate, seedAnchorKind, candidatesByDay, manualByDay, start, end);
@@ -202,10 +219,29 @@ public final class ThresholdDecay {
 	private record WindowEntry(LocalDate date, double effort, String activityId) {
 	}
 
+	/** {@code corrections} must be sorted by date. The sanity-band reference is normally {@code
+	 * v} itself, but a correction-only row overrides it from its own date until the next anchor
+	 * reset (a manual entry or a measured upward reset) - the same "latest of the two" rule
+	 * {@link ThresholdHistoryCalculator}'s replayFullHistory applies for a decay-disabled athlete
+	 * (issue #605, following #494). A correction never touches {@code v}, the anchor, or the
+	 * successor window, so it can let a later ride qualify but can never itself become the
+	 * value. */
 	private static List<Step> simulateEnabled(
 			ThresholdField field, DecaySettings settings, Double seedAnchorValue, LocalDate seedAnchorDate,
 			Map<LocalDate, List<DecayCandidate>> candidatesByDay, Map<LocalDate, ManualEntry> manualByDay,
-			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end, Double seedVValue) {
+			Map<LocalDate, Double> loadByDay, LocalDate start, LocalDate end, Double seedVValue,
+			List<ManualEntry> corrections) {
+		// Seed the override from the latest correction before start, unless the seed anchor is at
+		// least as recent (ties go to the correction, same as the decay-off replay's own rule).
+		Double sanityOverride = null;
+		int nextCorrectionIdx = 0;
+		while (nextCorrectionIdx < corrections.size() && corrections.get(nextCorrectionIdx).date().isBefore(start)) {
+			ManualEntry prior = corrections.get(nextCorrectionIdx++);
+			sanityOverride = seedAnchorDate == null || !prior.date().isBefore(seedAnchorDate)
+					? roundNative(prior.value())
+					: null;
+		}
+
 		LocalDate a = seedAnchorDate;
 		Double anchorEffort = seedAnchorValue != null ? toEffort(field, seedAnchorValue) : null;
 		Double effectiveSeedV = seedVValue != null ? seedVValue : seedAnchorValue;
@@ -232,6 +268,7 @@ public final class ThresholdDecay {
 				anchorEffort = toEffort(field, manual.value());
 				a = d;
 				vEffort = anchorEffort;
+				sanityOverride = null;
 				if (manual.alreadyRecorded()) {
 					suppressEmission = true;
 				}
@@ -242,7 +279,13 @@ public final class ThresholdDecay {
 				}
 			}
 
-			Double refNative = vEffort != null ? roundNative(fromEffort(field, vEffort)) : null;
+			// After the manual reset above, so a same-day correction still wins over it.
+			while (nextCorrectionIdx < corrections.size() && !corrections.get(nextCorrectionIdx).date().isAfter(d)) {
+				sanityOverride = roundNative(corrections.get(nextCorrectionIdx++).value());
+			}
+
+			Double refNative = sanityOverride != null ? sanityOverride
+					: vEffort != null ? Double.valueOf(roundNative(fromEffort(field, vEffort))) : null;
 			for (DecayCandidate candidate : candidatesByDay.getOrDefault(d, List.of())) {
 				if (!candidate.accepted() && refNative != null
 						&& !withinSanityBand(candidate.impliedValue(), refNative, settings.sanityPct())) {
@@ -259,6 +302,7 @@ public final class ThresholdDecay {
 					eventKind = MEASURED;
 					eventActivityId = candidate.activityId();
 					eventEffectiveFrom = d;
+					sanityOverride = null;
 					refNative = roundNative(fromEffort(field, vEffort));
 				}
 			}

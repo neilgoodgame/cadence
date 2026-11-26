@@ -1025,19 +1025,19 @@ def record_manual_value(
             athlete, field, given_date, persist=rerate_activities, collect_diff=preview
         )
 
-        # issue #494: only for a decay-disabled athlete - replay_from is the windowed-max
-        # algorithm that actually governs a decay-disabled athlete's real ledger (and, as of
-        # Piece A, now sees this row as a sanity reference even when it's correction-only), so a
-        # fresh run of it from this row's own date is exactly "what a rebuild would produce" to
-        # diff against. It is NOT the algorithm that governs a decay-enabled athlete's ledger
-        # (threshold_decay_recompute.simulate is), and that algorithm has no way yet to treat a
-        # brand-new correction-only row as an input at all (its anchor lookup only looks strictly
-        # before the resimulation's own start date) - so this is deliberately left empty for a
-        # decay-enabled athlete's correction-only edit rather than computed with the wrong
-        # algorithm. A decay-enabled athlete's edit that *becomes current* never reaches this
-        # branch at all (see the early return above).
+        # issue #494/#605: "what would a rebuild from this row's own date change", computed with
+        # whichever algorithm actually governs this athlete's ledger - both now see the row just
+        # inserted above as a sanity reference even when it's correction-only. Decay-disabled:
+        # replay_from (the windowed-max replay). Decay-enabled: a read-only suffix resimulation
+        # (threshold_decay.simulate, which takes correction-only rows as input since #605). A
+        # decay-enabled edit that *becomes current* never reaches here (see the early return
+        # above) - resimulate_suffix computes its diff itself.
         would_requalify: list[QualificationDiff] = []
-        if preview and not athlete.threshold_decay_enabled:
+        if preview and athlete.threshold_decay_enabled:
+            from .threshold_decay_recompute import qualification_diff_from
+
+            would_requalify = qualification_diff_from(athlete, field, given_date, today)
+        elif preview:
             # Reading this now rather than before the insert above is fine (and cheaper, since
             # most calls never reach this branch) - inserting the new manual/correction row
             # never touches an existing measured row, so there's nothing for this query to see

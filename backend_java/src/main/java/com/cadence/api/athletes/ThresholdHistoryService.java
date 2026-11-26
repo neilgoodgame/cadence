@@ -271,19 +271,18 @@ public class ThresholdHistoryService {
 
 		RerateResult rerateResult = reRateActivitiesFrom(athlete, field, givenDate, rerateActivities, preview);
 
-		// issue #494: only for a decay-disabled athlete - replayFrom is the windowed-max
-		// algorithm that actually governs a decay-disabled athlete's real ledger (and, as of the
-		// correction-only sanity-reference fix, now sees this row as a sanity reference even when
-		// it's correction-only), so a fresh run of it from this row's own date is exactly "what a
-		// rebuild would produce" to diff against. It is NOT the algorithm that governs a
-		// decay-enabled athlete's ledger (ThresholdDecay.simulate is), and that algorithm has no
-		// way yet to treat a brand-new correction-only row as an input at all (its anchor lookup
-		// only looks strictly before the resimulation's own start date) - so this is deliberately
-		// left empty for a decay-enabled athlete's correction-only edit rather than computed with
-		// the wrong algorithm. A decay-enabled athlete's edit that *becomes current* never reaches
-		// this branch at all (see the early return above).
+		// issue #494/#605: "what would a rebuild from this row's own date change", computed with
+		// whichever algorithm actually governs this athlete's ledger - both now see the row just
+		// saved above as a sanity reference even when it's correction-only. Decay-disabled:
+		// replayFrom (the windowed-max replay). Decay-enabled: a read-only suffix resimulation
+		// (ThresholdDecay.simulate, which takes correction-only rows as input since #605). A
+		// decay-enabled edit that *becomes current* never reaches here (see the early return
+		// above) - resimulateSuffix computes its diff itself.
 		List<QualificationDiff> wouldRequalify = List.of();
-		if (preview && !athlete.isThresholdDecayEnabled()) {
+		if (preview && athlete.isThresholdDecayEnabled()) {
+			wouldRequalify = decayRecomputeService.qualificationDiffFrom(athlete, field, givenDate, today);
+		}
+		else if (preview) {
 			// Reading this now rather than before the insert above is fine (and cheaper, since
 			// most calls never reach this branch) - inserting the new manual/correction row
 			// never touches an existing measured row, so there's nothing for this query to see

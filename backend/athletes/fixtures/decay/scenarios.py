@@ -203,4 +203,54 @@ def build_scenarios() -> list[dict]:
         }
     )
 
+    # Issue #605: correction-only rows as sanity-band references. A tighter band than the default
+    # so the reference actually decides things. The seed anchor (300) under-reads; a correction
+    # (400) says so. act_ok (390) is 30% off 300, so it only qualifies against the correction -
+    # and then becomes the anchor, which must clear the override: act_too_far (470) is 17.5% off
+    # 400 (would pass) but 20.5% off 390 (must fail).
+    correction_settings = DecaySettings(window_days=30, sanity_pct=20, tau_days=10, min_pct=3, max_pct=12, enabled=True)
+    correction_candidates = [
+        DecayCandidate(date=ANCHOR_DATE + timedelta(days=5), implied_value=390.0, activity_id="act_ok"),
+        DecayCandidate(date=ANCHOR_DATE + timedelta(days=8), implied_value=470.0, activity_id="act_too_far"),
+    ]
+    correction_end = ANCHOR_DATE + timedelta(days=60)
+    for name, start, corrections in [
+        # The correction lands inside the simulated range.
+        (
+            "correction_sanity_reference_in_range",
+            ANCHOR_DATE,
+            [ManualEntry(date=ANCHOR_DATE + timedelta(days=2), value=400.0)],
+        ),
+        # The correction predates `start` but not the seed anchor - still the live reference.
+        (
+            "correction_sanity_reference_before_start",
+            ANCHOR_DATE + timedelta(days=3),
+            [ManualEntry(date=ANCHOR_DATE + timedelta(days=2), value=400.0)],
+        ),
+        # The correction predates the seed anchor - superseded, so act_ok is rejected against 300.
+        (
+            "correction_older_than_seed_anchor_is_ignored",
+            ANCHOR_DATE + timedelta(days=3),
+            [ManualEntry(date=ANCHOR_DATE - timedelta(days=10), value=400.0)],
+        ),
+    ]:
+        scenarios.append(
+            {
+                "name": name,
+                "field": "ftp",
+                "settings": correction_settings,
+                "seed_anchor_value": 300.0,
+                "seed_anchor_date": ANCHOR_DATE,
+                "seed_anchor_kind": "measured",
+                "candidates": correction_candidates,
+                "manual_entries": [],
+                "corrections": corrections,
+                "load_by_day": {},
+                "start": start,
+                "end": correction_end,
+            }
+        )
+
+    for scenario in scenarios:
+        scenario.setdefault("corrections", [])
     return scenarios

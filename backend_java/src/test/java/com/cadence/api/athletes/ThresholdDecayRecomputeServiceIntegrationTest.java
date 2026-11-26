@@ -256,6 +256,85 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(current.getValueNumeric()).isEqualTo(250);
 	}
 
+	private record UnderReadSetup(User athlete, Activity probe, LocalDate today) {
+	}
+
+	/** Issue #605 setup: a 300 W anchor (an under-reading sensor) and a 390 W ride four days
+	 * later that's 30% off it - rejected by a 20% band, so the ledger has no row for it. Dated
+	 * relative to the real today, since recordManualValue has no asOf override. */
+	private UnderReadSetup underReadAnchorAndProbe(String email) {
+		User athlete = newDecayAthlete(email);
+		athlete.setThresholdSanityPct(20);
+		athlete = userRepository.save(athlete);
+		LocalDate today = LocalDate.now();
+		LocalDate anchorDate = today.minusDays(19);
+		newPowerActivity(athlete, anchorDate.atTime(7, 0).toInstant(ZoneOffset.UTC), 316, 1200); // implies 300
+		Activity probe = newPowerActivity(athlete, anchorDate.plusDays(4).atTime(7, 0).toInstant(ZoneOffset.UTC), 411, 1200); // implies 390
+		decayRecomputeService.resimulateSuffix(athlete, ThresholdField.FTP, anchorDate, today, null, null, true, false, false);
+		assertThat(probeRow(athlete, probe)).isEmpty();
+		return new UnderReadSetup(athlete, probe, today);
+	}
+
+	private List<ThresholdHistory> probeRow(User athlete, Activity probe) {
+		return thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)
+				.stream()
+				.filter(r -> r.getSourceActivity() != null && r.getSourceActivity().getId().equals(probe.getId()))
+				.toList();
+	}
+
+	// Issue #605: before, wouldRequalify was always empty for this combination.
+	@Test
+	void correctionOnlyPreviewReportsARideThatWouldRequalify() {
+		UnderReadSetup setup = underReadAnchorAndProbe("decay-605-requalify@example.cc");
+
+		// 18 days back is past the 10-day window - stale on arrival, so correction-only.
+		ThresholdHistoryService.ManualEditResult result = thresholdHistoryService.recordManualValue(
+				setup.athlete(), ThresholdField.FTP, 400, null, setup.athlete(), setup.today().minusDays(18), false, true);
+
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(result.wouldRequalify()).hasSize(1);
+		var diff = result.wouldRequalify().get(0);
+		assertThat(diff.oldActivityId()).isNull();
+		assertThat(diff.newActivityId()).isEqualTo(setup.probe().getId());
+		assertThat(diff.newValue()).isEqualTo(390);
+		assertThat(diff.currentFrom()).isEqualTo(setup.today().minusDays(15));
+	}
+
+	@Test
+	void correctionOnlyPreviewIsEmptyWhenNothingWouldRequalify() {
+		UnderReadSetup setup = underReadAnchorAndProbe("decay-605-empty@example.cc");
+
+		// 310 is barely a correction - the probe is still 25.8% off it.
+		ThresholdHistoryService.ManualEditResult result = thresholdHistoryService.recordManualValue(
+				setup.athlete(), ThresholdField.FTP, 310, null, setup.athlete(), setup.today().minusDays(18), false, true);
+
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(result.wouldRequalify()).isEmpty();
+	}
+
+	// The preview's prediction holds for a real rebuild: once the correction row is stored,
+	// resimulating actually writes the probe's row - and the correction itself never becomes a
+	// ledger value.
+	@Test
+	void realResimulationHonoursAStoredCorrection() {
+		UnderReadSetup setup = underReadAnchorAndProbe("decay-605-real@example.cc");
+		LocalDate correctionDate = setup.today().minusDays(18);
+		thresholdHistoryService.recordManualValue(
+				setup.athlete(), ThresholdField.FTP, 400, null, setup.athlete(), correctionDate, false, false);
+
+		decayRecomputeService.resimulateSuffix(
+				setup.athlete(), ThresholdField.FTP, correctionDate, setup.today(), null, null, true, false, false);
+
+		List<ThresholdHistory> rows = probeRow(setup.athlete(), setup.probe());
+		assertThat(rows).hasSize(1);
+		assertThat(rows.get(0).getValueNumeric()).isEqualTo(390);
+		assertThat(rows.get(0).getKind()).isEqualTo(ThresholdHistoryKind.MEASURED);
+		assertThat(thresholdHistoryRepository.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(
+				setup.athlete().getId(), ThresholdField.FTP).stream()
+				.filter(r -> !r.isCorrectionOnly() && Integer.valueOf(400).equals(r.getValueNumeric())))
+				.isEmpty();
+	}
+
 	@Test
 	void rebuildKeepsManualRowsAndRegeneratesMeasuredAndDecayed() {
 		User athlete = newDecayAthlete("decay-rebuild@example.cc");

@@ -738,8 +738,8 @@ export interface ThresholdEditResult {
   /** Populated only when preview=true - what rerate_activities=true would do, without saving it. */
   would_rerate?: RerateDiff[];
   /** Populated only when preview=true - which later ride(s) would newly (or no longer) qualify
-   * if a full rebuild were run from this edit's own date. Always empty for a decay-enabled
-   * athlete's correction-only edit - see ThresholdEditResult's openapi.yaml description. */
+   * if a full rebuild were run from this edit's own date - see ThresholdEditResult's
+   * openapi.yaml description. */
   would_requalify?: QualificationDiff[];
 }
 
