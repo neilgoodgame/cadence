@@ -282,14 +282,13 @@ class RecordManualValueWiringTests(TestCase):
         self.assertTrue(result.is_correction_only)
         self.assertEqual(result.would_requalify, [])
 
-    def test_real_resimulation_honours_a_stored_correction(self):
-        """The preview's prediction holds for a real rebuild: once the correction row is stored,
-        resimulating actually writes the probe's row - and the correction itself never becomes a
-        ledger value or the live value."""
+    def test_saving_a_correction_applies_it_from_its_own_date(self):
+        """Issue #605 review: a real correction-only save resimulates from the correction's own
+        date straight away - no later ingest/refresh needed, so nothing is left half-applied.
+        The preview's prediction holds, and the correction itself never becomes a ledger value."""
         athlete, probe, as_of = self._under_read_anchor_and_probe()
-        record_manual_value(athlete, "ftp", 400, effective_from=date(2026, 1, 2), as_of=as_of)
 
-        resimulate_suffix(athlete, "ftp", date(2026, 1, 2), end=as_of)
+        record_manual_value(athlete, "ftp", 400, effective_from=date(2026, 1, 2), as_of=as_of)
 
         probe_row = ThresholdHistory.objects.get(athlete=athlete, field="ftp", source_activity=probe)
         self.assertEqual(probe_row.value_numeric, 390)
@@ -299,6 +298,28 @@ class RecordManualValueWiringTests(TestCase):
             .exclude(is_correction_only=True)
             .exists()
         )
+
+    def test_correction_only_preview_ignores_drift_it_did_not_cause(self):
+        """Issue #605 review: a correction stored before #605 (never applied, so the ledger still
+        lacks the probe's row) must not show up as a consequence of an unrelated new edit."""
+        athlete, probe, as_of = self._under_read_anchor_and_probe()
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=400,
+            effective_from=date(2026, 1, 2),
+            current_from=date(2026, 1, 2),
+            kind="manual",
+            is_correction_only=True,
+        )
+
+        # Dated before the old correction, so it changes nothing from Jan 2 on.
+        result = record_manual_value(athlete, "ftp", 305, effective_from=date(2026, 1, 1), as_of=as_of, preview=True)
+
+        self.assertTrue(result.is_correction_only)
+        self.assertEqual(result.would_requalify, [])
+        # Sanity-check the premise: the stored ledger really is stale relative to a rebuild.
+        self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", source_activity=probe).exists())
 
     def test_preview_rolls_back_everything_including_the_resimulated_rows(self):
         athlete = _decay_athlete()

@@ -31,10 +31,10 @@ from .threshold_history import (
     _chunked,
     _implied_value_detail,
     _latest_entry,
-    _qualification_diff,
     _rerate_activities_from,
     _row_value,
     _seconds_to_mmss,
+    _wire_value,
 )
 
 
@@ -164,7 +164,7 @@ def _simulate_suffix(
     new_manual_entry: DecayManualEntry | None,
 ) -> list[Step]:
     """Gathers every input from the real ledger and runs `simulate` - the read-only half shared
-    by resimulate_suffix, gather_preview_steps and qualification_diff_from, so they can never
+    by resimulate_suffix, gather_preview_steps and simulate_suffix_steps, so they can never
     disagree about what a resimulation would produce."""
     seed_v = _seed_v(athlete, field, from_date)
     seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
@@ -197,17 +197,44 @@ def _simulate_suffix(
     )
 
 
-def qualification_diff_from(athlete: User, field: str, from_date: date, end: date) -> list[QualificationDiff]:
-    """Read-only (issue #605): the ledger slots where resimulating from `from_date` would pick a
-    different measured winner than what's stored - resimulate_suffix's collect_qualification_diff
-    without the write. For record_manual_value's preview of a decay-enabled athlete's
-    correction-only edit, which (like the decay-off case) never resimulates for real; the caller
-    must already have inserted the correction row so `_gather_corrections` sees it."""
-    old_measured_rows = list(
-        ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="measured", current_from__gte=from_date)
-    )
-    steps = _simulate_suffix(athlete, field, from_date, end, _decay_settings_for(athlete), None)
-    return _qualification_diff(field, old_measured_rows, [step for step in steps if step.kind == "measured"])
+def simulate_suffix_steps(athlete: User, field: str, from_date: date, end: date) -> list[Step]:
+    """Read-only: the `Step`s a resimulation from `from_date` would write against the ledger as
+    it stands right now, with the athlete's own settings. record_manual_value calls it either
+    side of inserting a correction-only row to get a before/after pair for
+    `step_qualification_diff` (issue #605)."""
+    return _simulate_suffix(athlete, field, from_date, end, _decay_settings_for(athlete), None)
+
+
+def step_qualification_diff(field: str, before: list[Step], after: list[Step]) -> list[QualificationDiff]:
+    """The ledger slots (keyed by current_from) where two simulations of the same range pick a
+    different measured winner. Comparing two simulations, rather than a simulation against the
+    stored rows, attributes only what the one input that differs between them changes: stored
+    rows can already disagree with a fresh simulation for reasons unrelated to the edit being
+    previewed (e.g. correction rows saved before #605 made the decay-on path honour them), and
+    those must not show up as this edit's consequences. `decayed`/`manual` steps are excluded
+    from both sides - they never carry an activity_id, so they're not a "did a different ride
+    qualify" event."""
+    before_by_current_from = {s.current_from: s for s in before if s.kind == "measured"}
+    after_by_current_from = {s.current_from: s for s in after if s.kind == "measured"}
+    diffs = []
+    for current_from in sorted(set(before_by_current_from) | set(after_by_current_from)):
+        old_step = before_by_current_from.get(current_from)
+        new_step = after_by_current_from.get(current_from)
+        old_activity_id = old_step.activity_id if old_step else None
+        new_activity_id = new_step.activity_id if new_step else None
+        old_value = old_step.value if old_step else None
+        new_value = new_step.value if new_step else None
+        if old_activity_id != new_activity_id or old_value != new_value:
+            diffs.append(
+                QualificationDiff(
+                    current_from=current_from,
+                    old_activity_id=old_activity_id,
+                    new_activity_id=new_activity_id,
+                    old_value=_wire_value(field, old_value),
+                    new_value=_wire_value(field, new_value),
+                )
+            )
+    return diffs
 
 
 def resimulate_suffix(
@@ -235,11 +262,9 @@ def resimulate_suffix(
     to whichever resulting `Step` is that entry's own.
 
     `collect_qualification_diff` (issue #494, record_manual_value's own preview flag) diffs the
-    `measured` rows this call is about to delete against the `measured` `Step`s it's about to
-    write in their place - same shape as threshold_history._qualification_diff's decay-off use,
-    deliberately excluding `decayed`/`manual` steps from both sides: those never carry an
-    activity_id, so they're not a "did a different ride qualify" event, the same way a manual
-    winner's own row is already excluded from would_rerate's diff.
+    `measured` `Step`s this call writes against a baseline simulation of the same range without
+    `new_manual_entry` - see step_qualification_diff for why a baseline simulation rather than
+    the stored rows (issue #605 review).
 
     Runs inside a transaction holding a row lock on `athlete` for its duration (design doc 4.3) -
     guards against two triggers (e.g. a future daily job and an ingest) re-simulating the same
@@ -250,23 +275,15 @@ def resimulate_suffix(
     with transaction.atomic():
         User.objects.select_for_update().get(pk=athlete.id)
 
-        old_measured_rows = (
-            list(
-                ThresholdHistory.objects.filter(
-                    athlete=athlete, field=field, kind="measured", current_from__gte=from_date
-                )
-            )
-            if collect_qualification_diff
-            else []
+        # Baseline: the same range simulated without the new entry (see step_qualification_diff
+        # for why this, not the stored rows).
+        baseline_steps = (
+            _simulate_suffix(athlete, field, from_date, end, settings, None) if collect_qualification_diff else []
         )
 
         steps = _simulate_suffix(athlete, field, from_date, end, settings, new_manual_entry)
 
-        would_requalify = (
-            _qualification_diff(field, old_measured_rows, [step for step in steps if step.kind == "measured"])
-            if collect_qualification_diff
-            else []
-        )
+        would_requalify = step_qualification_diff(field, baseline_steps, steps) if collect_qualification_diff else []
 
         ThresholdHistory.objects.filter(
             athlete=athlete, field=field, current_from__gte=from_date, kind__in=["measured", "decayed"]

@@ -411,7 +411,7 @@ public class ThresholdHistoryCalculator {
 				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
 		int nextManualIdx = 0;
 		List<ThresholdHistory> correctionRows = thresholdHistoryRepository
-				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAscIdAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
 		int nextCorrectionIdx = 0;
 
 		List<ThresholdHistoryEntry> entries = new ArrayList<>();
@@ -580,7 +580,7 @@ public class ThresholdHistoryCalculator {
 			}
 		}
 		List<ThresholdHistory> correctionRows = thresholdHistoryRepository
-				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(athlete.getId(), field,
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAscIdAsc(athlete.getId(), field,
 						ThresholdHistoryKind.MANUAL);
 		int nextCorrectionIdx = 0;
 

@@ -170,7 +170,7 @@ public class ThresholdDecayRecomputeService {
 	 * latest of those can still be the live reference when the resimulation starts. */
 	private List<ThresholdDecay.ManualEntry> gatherCorrections(User athlete, ThresholdField field, LocalDate end) {
 		List<ThresholdDecay.ManualEntry> corrections = new ArrayList<>();
-		for (ThresholdHistory row : thresholdHistoryRepository.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(
+		for (ThresholdHistory row : thresholdHistoryRepository.findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAscIdAsc(
 				athlete.getId(), field, ThresholdHistoryKind.MANUAL)) {
 			if (!row.getEffectiveFrom().isAfter(end)) {
 				corrections.add(new ThresholdDecay.ManualEntry(row.getEffectiveFrom(), rowValue(field, row)));
@@ -180,7 +180,7 @@ public class ThresholdDecayRecomputeService {
 	}
 
 	/** Gathers every input from the real ledger and runs simulate() - the read-only half shared
-	 * by resimulateSuffix, gatherPreviewSteps and qualificationDiffFrom, so they can never
+	 * by resimulateSuffix, gatherPreviewSteps and simulateSuffixSteps, so they can never
 	 * disagree about what a resimulation would produce. */
 	private List<ThresholdDecay.Step> simulateSuffix(User athlete, ThresholdField field, LocalDate fromDate, LocalDate end,
 			ThresholdDecay.DecaySettings settings, ThresholdDecay.ManualEntry newManualEntry) {
@@ -202,19 +202,12 @@ public class ThresholdDecayRecomputeService {
 				seedV, corrections);
 	}
 
-	/** Read-only (issue #605): the ledger slots where resimulating from {@code fromDate} would
-	 * pick a different measured winner than what's stored - resimulateSuffix's
-	 * collectQualificationDiff without the write. For recordManualValue's preview of a
-	 * decay-enabled athlete's correction-only edit, which (like the decay-off case) never
-	 * resimulates for real; the caller must already have saved the correction row so
-	 * gatherCorrections sees it. */
-	public List<ThresholdHistoryService.QualificationDiff> qualificationDiffFrom(
-			User athlete, ThresholdField field, LocalDate fromDate, LocalDate end) {
-		List<ThresholdHistory> oldMeasuredRows = thresholdHistoryRepository
-				.findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
-						athlete.getId(), field, ThresholdHistoryKind.MEASURED, fromDate);
-		List<ThresholdDecay.Step> steps = simulateSuffix(athlete, field, fromDate, end, decaySettingsFor(athlete), null);
-		return qualificationDiff(field, oldMeasuredRows, steps);
+	/** Read-only: the Steps a resimulation from {@code fromDate} would write against the ledger
+	 * as it stands right now, with the athlete's own settings. recordManualValue calls it either
+	 * side of saving a correction-only row to get a before/after pair for {@link
+	 * #stepQualificationDiff} (issue #605). */
+	public List<ThresholdDecay.Step> simulateSuffixSteps(User athlete, ThresholdField field, LocalDate fromDate, LocalDate end) {
+		return simulateSuffix(athlete, field, fromDate, end, decaySettingsFor(athlete), null);
 	}
 
 	public ResimulateResult resimulateSuffix(User athlete, ThresholdField field, LocalDate fromDate) {
@@ -239,11 +232,9 @@ public class ThresholdDecayRecomputeService {
 	 * manualSetBy} is attached to whichever resulting Step is that entry's own.
 	 *
 	 * <p>{@code collectQualificationDiff} (issue #494, recordManualValue's own preview flag)
-	 * diffs the MEASURED rows this call is about to delete against the MEASURED Steps it's about
-	 * to write in their place - same shape as ThresholdHistoryService.qualificationDiff's
-	 * decay-off use, deliberately excluding DECAYED/MANUAL steps from both sides: those never
-	 * carry an activityId, so they're not a "did a different ride qualify" event, the same way a
-	 * manual winner's own row is already excluded from wouldRerate's diff.
+	 * diffs the MEASURED Steps this call writes against a baseline simulation of the same range
+	 * without {@code newManualEntry} - see {@link #stepQualificationDiff} for why a baseline
+	 * simulation rather than the stored rows (issue #605 review).
 	 *
 	 * <p>Runs inside a transaction holding a row lock on {@code athlete} for its duration (design
 	 * doc 4.3) - guards against two triggers re-simulating the same field at once. */
@@ -253,16 +244,16 @@ public class ThresholdDecayRecomputeService {
 			boolean collectQualificationDiff) {
 		userRepository.findWithLockById(athlete.getId());
 
-		List<ThresholdHistory> oldMeasuredRows = collectQualificationDiff
-				? thresholdHistoryRepository.findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
-						athlete.getId(), field, ThresholdHistoryKind.MEASURED, fromDate)
-				: List.of();
-
 		ThresholdDecay.DecaySettings settings = decaySettingsFor(athlete);
+		// Baseline: the same range simulated without the new entry (see stepQualificationDiff
+		// for why this, not the stored rows).
+		List<ThresholdDecay.Step> baselineSteps = collectQualificationDiff
+				? simulateSuffix(athlete, field, fromDate, end, settings, null)
+				: List.of();
 		List<ThresholdDecay.Step> steps = simulateSuffix(athlete, field, fromDate, end, settings, newManualEntry);
 
 		List<ThresholdHistoryService.QualificationDiff> wouldRequalify = collectQualificationDiff
-				? qualificationDiff(field, oldMeasuredRows, steps)
+				? stepQualificationDiff(field, baselineSteps, steps)
 				: List.of();
 
 		thresholdHistoryRepository.deleteByAthleteIdAndFieldAndCurrentFromGreaterThanEqualAndKindIn(
@@ -335,29 +326,29 @@ public class ThresholdDecayRecomputeService {
 		return new ResimulateResult(changed, reratedCount, wouldRerate, wouldRequalify);
 	}
 
-	// Diffs the MEASURED rows currently stored against the MEASURED Steps a resimulation is
-	// about to replace them with (issue #494) - both sides keyed by currentFrom, the same key a
-	// Step and its superseded stored row always share. Mirrors
-	// ThresholdHistoryService.qualificationDiff's decay-off version; kept separate rather than
-	// shared because the "new" side is shaped differently here (Step, not ThresholdHistoryEntry).
-	private static List<ThresholdHistoryService.QualificationDiff> qualificationDiff(
-			ThresholdField field, List<ThresholdHistory> oldRows, List<ThresholdDecay.Step> steps) {
-		Map<LocalDate, ThresholdHistory> oldByCurrentFrom =
-				oldRows.stream().collect(Collectors.toMap(ThresholdHistory::getCurrentFrom, r -> r, (a, b) -> a));
-		Map<LocalDate, ThresholdDecay.Step> newByCurrentFrom = steps.stream()
-				.filter(s -> "measured".equals(s.kind()))
-				.collect(Collectors.toMap(ThresholdDecay.Step::currentFrom, s -> s, (a, b) -> a));
+	/** The ledger slots (keyed by currentFrom) where two simulations of the same range pick a
+	 * different measured winner. Comparing two simulations, rather than a simulation against the
+	 * stored rows, attributes only what the one input that differs between them changes: stored
+	 * rows can already disagree with a fresh simulation for reasons unrelated to the edit being
+	 * previewed (e.g. correction rows saved before #605 made the decay-on path honour them), and
+	 * those must not show up as this edit's consequences. DECAYED/MANUAL steps are excluded from
+	 * both sides - they never carry an activityId, so they're not a "did a different ride
+	 * qualify" event. Mirrors the Python backend's step_qualification_diff. */
+	public static List<ThresholdHistoryService.QualificationDiff> stepQualificationDiff(
+			ThresholdField field, List<ThresholdDecay.Step> before, List<ThresholdDecay.Step> after) {
+		Map<LocalDate, ThresholdDecay.Step> beforeByCurrentFrom = measuredByCurrentFrom(before);
+		Map<LocalDate, ThresholdDecay.Step> afterByCurrentFrom = measuredByCurrentFrom(after);
 		TreeSet<LocalDate> currentFroms = new TreeSet<>();
-		currentFroms.addAll(oldByCurrentFrom.keySet());
-		currentFroms.addAll(newByCurrentFrom.keySet());
+		currentFroms.addAll(beforeByCurrentFrom.keySet());
+		currentFroms.addAll(afterByCurrentFrom.keySet());
 
 		List<ThresholdHistoryService.QualificationDiff> diffs = new ArrayList<>();
 		for (LocalDate currentFrom : currentFroms) {
-			ThresholdHistory oldRow = oldByCurrentFrom.get(currentFrom);
-			ThresholdDecay.Step newStep = newByCurrentFrom.get(currentFrom);
-			String oldActivityId = oldRow != null && oldRow.getSourceActivity() != null ? oldRow.getSourceActivity().getId() : null;
+			ThresholdDecay.Step oldStep = beforeByCurrentFrom.get(currentFrom);
+			ThresholdDecay.Step newStep = afterByCurrentFrom.get(currentFrom);
+			String oldActivityId = oldStep != null ? oldStep.activityId() : null;
 			String newActivityId = newStep != null ? newStep.activityId() : null;
-			Double oldValue = oldRow != null ? rowValue(field, oldRow) : null;
+			Double oldValue = oldStep != null ? oldStep.value() : null;
 			Double newValue = newStep != null ? newStep.value() : null;
 			if (!Objects.equals(oldActivityId, newActivityId) || !Objects.equals(oldValue, newValue)) {
 				diffs.add(new ThresholdHistoryService.QualificationDiff(
@@ -365,6 +356,12 @@ public class ThresholdDecayRecomputeService {
 			}
 		}
 		return diffs;
+	}
+
+	private static Map<LocalDate, ThresholdDecay.Step> measuredByCurrentFrom(List<ThresholdDecay.Step> steps) {
+		return steps.stream()
+				.filter(s -> "measured".equals(s.kind()))
+				.collect(Collectors.toMap(ThresholdDecay.Step::currentFrom, s -> s, (a, b) -> a));
 	}
 
 	private static Object wireValue(ThresholdField field, Double value) {

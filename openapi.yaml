@@ -6271,12 +6271,13 @@ components:
         would_requalify:
           type: array
           description: >-
-            Populated only when preview=true - the ledger slots (by current_from) where running
-            a full rebuild from this edit's own date would pick a different winner than what's
-            currently stored, i.e. this correction would also change which later ride(s) qualify.
-            Covers every combination of decay on/off and live/correction-only edits; a
-            correction-only edit only ever acts as the sanity-band reference for later rides,
-            never as the value itself.
+            Populated only when preview=true - the ledger slots (by current_from) where this edit
+            would change which later ride(s) qualify. Decay off: a full rebuild from the edit's
+            own date compared with what's currently stored (saving never rebuilds). Decay on:
+            the same range simulated with vs. without this edit, so differences the edit didn't
+            cause are left out; saving applies it from its own date immediately. Covers live and
+            correction-only edits; a correction-only edit only ever acts as the sanity-band
+            reference for later rides, never as the value itself.
           items:
             $ref: "#/components/schemas/QualificationDiff"
 

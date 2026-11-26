@@ -389,7 +389,7 @@ def _replay_full_history_into(
     next_manual_idx = 0
     correction_rows = list(
         ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=True).order_by(
-            "effective_from"
+            "effective_from", "id"
         )
     )
     next_correction_idx = 0
@@ -559,7 +559,7 @@ def _replay_from_into(
     next_manual_idx = 0
     correction_rows = list(
         ThresholdHistory.objects.filter(athlete=athlete, field=field, kind="manual", is_correction_only=True).order_by(
-            "effective_from"
+            "effective_from", "id"
         )
     )
     next_correction_idx = 0
@@ -974,9 +974,9 @@ def record_manual_value(
     # Decay-enabled, and this edit actually becomes the live value: let resimulate_suffix create
     # the ledger row itself (via simulate's own manual-entry Step emission) and re-derive the
     # suffix after it, rather than writing it directly and separately re-simulating - the design
-    # doc's "one mechanism" (4.2). A correction-only edit never competed to be current (same as
-    # today), so it stays on the direct-write path below regardless of threshold_decay_enabled -
-    # there's no suffix to re-simulate for a row that was never live in the first place.
+    # doc's "one mechanism" (4.2). A correction-only edit never competes to be current, so simulate
+    # must not emit it as a Step: it's written directly below (with is_correction_only) and the
+    # suffix is then resimulated around it, where it only acts as a sanity reference (#605).
     if athlete.threshold_decay_enabled and became_current:
         from .threshold_decay import ManualEntry as DecayManualEntry
         from .threshold_decay_recompute import resimulate_suffix
@@ -1007,7 +1007,19 @@ def record_manual_value(
 
     value_numeric, value_pace = (None, raw_value) if field == "threshold_pace" else (raw_value, "")
 
+    # Only a correction-only edit reaches here for a decay-enabled athlete (see the early return
+    # above). Since #605 its resimulation reads correction rows, so the edit has to be applied
+    # from its own date right away (below) - otherwise the next ingest/refresh would apply it
+    # only from whatever date that trigger happens to start at, leaving the range in between on
+    # the old rule (issue #605 review).
+    decay_on = athlete.threshold_decay_enabled
+    if decay_on:
+        from .threshold_decay_recompute import resimulate_suffix, simulate_suffix_steps, step_qualification_diff
+
     with transaction.atomic():
+        # The preview's "before" side, read before the row exists - see step_qualification_diff.
+        baseline_steps = simulate_suffix_steps(athlete, field, given_date, today) if decay_on and preview else []
+
         ThresholdHistory.objects.create(
             athlete=athlete,
             field=field,
@@ -1021,22 +1033,18 @@ def record_manual_value(
             is_correction_only=is_correction_only,
         )
 
-        rerated_count, would_rerate = _rerate_activities_from(
-            athlete, field, given_date, persist=rerate_activities, collect_diff=preview
-        )
-
-        # issue #494/#605: "what would a rebuild from this row's own date change", computed with
-        # whichever algorithm actually governs this athlete's ledger - both now see the row just
-        # inserted above as a sanity reference even when it's correction-only. Decay-disabled:
-        # replay_from (the windowed-max replay). Decay-enabled: a read-only suffix resimulation
-        # (threshold_decay.simulate, which takes correction-only rows as input since #605). A
-        # decay-enabled edit that *becomes current* never reaches here (see the early return
-        # above) - resimulate_suffix computes its diff itself.
+        # issue #494/#605: which later rides this edit changes. Decay-enabled: the same range
+        # simulated with vs. without the row just inserted, then actually resimulated (re-rating
+        # is left to _rerate_activities_from below, so it sees the regenerated ledger). Decay-
+        # disabled: a fresh replay_from against the stored rows - that path still only previews,
+        # it never rebuilds on save.
         would_requalify: list[QualificationDiff] = []
-        if preview and athlete.threshold_decay_enabled:
-            from .threshold_decay_recompute import qualification_diff_from
-
-            would_requalify = qualification_diff_from(athlete, field, given_date, today)
+        if decay_on:
+            if preview:
+                would_requalify = step_qualification_diff(
+                    field, baseline_steps, simulate_suffix_steps(athlete, field, given_date, today)
+                )
+            resimulate_suffix(athlete, field, given_date, end=today, rerate_activities=False)
         elif preview:
             # Reading this now rather than before the insert above is fine (and cheaper, since
             # most calls never reach this branch) - inserting the new manual/correction row
@@ -1049,6 +1057,10 @@ def record_manual_value(
             )
             new_entries = replay_from(athlete, field, given_date)
             would_requalify = _qualification_diff(field, old_measured_rows, new_entries)
+
+        rerated_count, would_rerate = _rerate_activities_from(
+            athlete, field, given_date, persist=rerate_activities, collect_diff=preview
+        )
 
         # Never touched by the caller (unlike pre-#493) - became_current already accounts for
         # whether this edit is actually the one that should be live, so this is always right,

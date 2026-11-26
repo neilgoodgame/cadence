@@ -261,12 +261,13 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 
 	/** Issue #605 setup: a 300 W anchor (an under-reading sensor) and a 390 W ride four days
 	 * later that's 30% off it - rejected by a 20% band, so the ledger has no row for it. Dated
-	 * relative to the real today, since recordManualValue has no asOf override. */
+	 * relative to the real today, since recordManualValue has no asOf override - in UTC, the
+	 * zone ThresholdHistoryCalculator.dateOf dates activities in. */
 	private UnderReadSetup underReadAnchorAndProbe(String email) {
 		User athlete = newDecayAthlete(email);
 		athlete.setThresholdSanityPct(20);
 		athlete = userRepository.save(athlete);
-		LocalDate today = LocalDate.now();
+		LocalDate today = LocalDate.now(ZoneOffset.UTC);
 		LocalDate anchorDate = today.minusDays(19);
 		newPowerActivity(athlete, anchorDate.atTime(7, 0).toInstant(ZoneOffset.UTC), 316, 1200); // implies 300
 		Activity probe = newPowerActivity(athlete, anchorDate.plusDays(4).atTime(7, 0).toInstant(ZoneOffset.UTC), 411, 1200); // implies 390
@@ -312,18 +313,15 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(result.wouldRequalify()).isEmpty();
 	}
 
-	// The preview's prediction holds for a real rebuild: once the correction row is stored,
-	// resimulating actually writes the probe's row - and the correction itself never becomes a
-	// ledger value.
+	// Issue #605 review: a real correction-only save resimulates from the correction's own date
+	// straight away - no later ingest/refresh needed, so nothing is left half-applied. The
+	// preview's prediction holds, and the correction itself never becomes a ledger value.
 	@Test
-	void realResimulationHonoursAStoredCorrection() {
+	void savingACorrectionAppliesItFromItsOwnDate() {
 		UnderReadSetup setup = underReadAnchorAndProbe("decay-605-real@example.cc");
-		LocalDate correctionDate = setup.today().minusDays(18);
-		thresholdHistoryService.recordManualValue(
-				setup.athlete(), ThresholdField.FTP, 400, null, setup.athlete(), correctionDate, false, false);
 
-		decayRecomputeService.resimulateSuffix(
-				setup.athlete(), ThresholdField.FTP, correctionDate, setup.today(), null, null, true, false, false);
+		thresholdHistoryService.recordManualValue(
+				setup.athlete(), ThresholdField.FTP, 400, null, setup.athlete(), setup.today().minusDays(18), false, false);
 
 		List<ThresholdHistory> rows = probeRow(setup.athlete(), setup.probe());
 		assertThat(rows).hasSize(1);
@@ -333,6 +331,29 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 				setup.athlete().getId(), ThresholdField.FTP).stream()
 				.filter(r -> !r.isCorrectionOnly() && Integer.valueOf(400).equals(r.getValueNumeric())))
 				.isEmpty();
+	}
+
+	// Issue #605 review: a correction stored before #605 (never applied, so the ledger still
+	// lacks the probe's row) must not show up as a consequence of an unrelated new edit.
+	@Test
+	void correctionOnlyPreviewIgnoresDriftItDidNotCause() {
+		UnderReadSetup setup = underReadAnchorAndProbe("decay-605-drift@example.cc");
+		ThresholdHistory old = new ThresholdHistory();
+		old.setAthlete(setup.athlete());
+		old.setField(ThresholdField.FTP);
+		old.setValueNumeric(400);
+		old.setEffectiveFrom(setup.today().minusDays(18));
+		old.setCurrentFrom(setup.today().minusDays(18));
+		old.setKind(ThresholdHistoryKind.MANUAL);
+		old.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(old);
+
+		// Dated before the old correction (on the anchor's own day), so it changes nothing after it.
+		ThresholdHistoryService.ManualEditResult result = thresholdHistoryService.recordManualValue(
+				setup.athlete(), ThresholdField.FTP, 305, null, setup.athlete(), setup.today().minusDays(19), false, true);
+
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(result.wouldRequalify()).isEmpty();
 	}
 
 	@Test

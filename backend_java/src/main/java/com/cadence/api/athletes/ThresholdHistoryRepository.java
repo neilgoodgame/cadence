@@ -63,10 +63,12 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
 	// ThresholdHistoryCalculator.replayFullHistory/replayFrom's correction-only sanity-reference
-	// merge (issue #494) - every correction-only row, oldest first. These never enter the
+	// merge (issue #494) - every correction-only row, oldest first, ties by id so two rows on the
+	// same date apply in the same order as the Python backend's order_by("effective_from", "id")
+	// (issue #605 review). These never enter the
 	// replay's window (see replayFullHistory's own Javadoc), so this is deliberately the mirror
 	// of the CorrectionOnlyFalse finder above, not a filter on it.
-	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAsc(
+	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCorrectionOnlyTrueOrderByEffectiveFromAscIdAsc(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
 	// list_threshold_history MCP tool's optional date-range restriction - `fromDate`/`toDate` are
