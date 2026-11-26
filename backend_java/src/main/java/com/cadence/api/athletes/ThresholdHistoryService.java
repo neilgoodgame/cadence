@@ -242,15 +242,26 @@ public class ThresholdHistoryService {
 		// ThresholdDecayRecomputeService create the ledger row itself (via simulate()'s own
 		// manual-entry Step emission) and re-derive the suffix after it, rather than writing it
 		// directly and separately re-simulating - the design doc's "one mechanism" (4.2). A
-		// correction-only edit never competed to be current (same as today), so it stays on the
-		// direct-write path below regardless of thresholdDecayEnabled - there's no suffix to
-		// re-simulate for a row that was never live in the first place.
+		// correction-only edit never competes to be current, so simulate() must not emit it as a
+		// Step: it's written directly below (with correctionOnly) and the suffix is then
+		// resimulated around it, where it only acts as a sanity reference (#605).
 		if (athlete.isThresholdDecayEnabled() && becameCurrent) {
 			ThresholdDecay.ManualEntry newEntry = new ThresholdDecay.ManualEntry(givenDate, implied, null, false);
 			ThresholdDecayRecomputeService.ResimulateResult result = decayRecomputeService.resimulateSuffix(
 					athlete, field, givenDate, today, newEntry, setBy, rerateActivities, preview, preview);
 			return new ManualEditResult(true, true, false, result.reratedCount(), result.wouldRerate(), result.wouldRequalify());
 		}
+
+		// Only a correction-only edit reaches here for a decay-enabled athlete (see the early
+		// return above). Since #605 its resimulation reads correction rows, so the edit has to be
+		// applied from its own date right away (below) - otherwise the next ingest/refresh would
+		// apply it only from whatever date that trigger happens to start at, leaving the range in
+		// between on the old rule (issue #605 review). The preview's "before" side is read here,
+		// before the row exists - see ThresholdDecayRecomputeService.stepQualificationDiff.
+		boolean decayOn = athlete.isThresholdDecayEnabled();
+		List<ThresholdDecay.Step> baselineSteps = decayOn && preview
+				? decayRecomputeService.simulateSuffixSteps(athlete, field, givenDate, today)
+				: List.of();
 
 		ThresholdHistory entry = new ThresholdHistory();
 		entry.setAthlete(athlete);
@@ -269,21 +280,20 @@ public class ThresholdHistoryService {
 		}
 		thresholdHistoryRepository.save(entry);
 
-		RerateResult rerateResult = reRateActivitiesFrom(athlete, field, givenDate, rerateActivities, preview);
-
-		// issue #494: only for a decay-disabled athlete - replayFrom is the windowed-max
-		// algorithm that actually governs a decay-disabled athlete's real ledger (and, as of the
-		// correction-only sanity-reference fix, now sees this row as a sanity reference even when
-		// it's correction-only), so a fresh run of it from this row's own date is exactly "what a
-		// rebuild would produce" to diff against. It is NOT the algorithm that governs a
-		// decay-enabled athlete's ledger (ThresholdDecay.simulate is), and that algorithm has no
-		// way yet to treat a brand-new correction-only row as an input at all (its anchor lookup
-		// only looks strictly before the resimulation's own start date) - so this is deliberately
-		// left empty for a decay-enabled athlete's correction-only edit rather than computed with
-		// the wrong algorithm. A decay-enabled athlete's edit that *becomes current* never reaches
-		// this branch at all (see the early return above).
+		// issue #494/#605: which later rides this edit changes. Decay-enabled: the same range
+		// simulated with vs. without the row just saved, then actually resimulated (re-rating is
+		// left to reRateActivitiesFrom below, so it sees the regenerated ledger). Decay-disabled:
+		// a fresh replayFrom against the stored rows - that path still only previews, it never
+		// rebuilds on save.
 		List<QualificationDiff> wouldRequalify = List.of();
-		if (preview && !athlete.isThresholdDecayEnabled()) {
+		if (decayOn) {
+			if (preview) {
+				wouldRequalify = ThresholdDecayRecomputeService.stepQualificationDiff(
+						field, baselineSteps, decayRecomputeService.simulateSuffixSteps(athlete, field, givenDate, today));
+			}
+			decayRecomputeService.resimulateSuffix(athlete, field, givenDate, today, null, null, false, false, false);
+		}
+		else if (preview) {
 			// Reading this now rather than before the insert above is fine (and cheaper, since
 			// most calls never reach this branch) - inserting the new manual/correction row
 			// never touches an existing measured row, so there's nothing for this query to see
@@ -294,6 +304,8 @@ public class ThresholdHistoryService {
 			List<ThresholdHistoryEntry> newEntries = calculator.replayFrom(athlete, field, givenDate);
 			wouldRequalify = qualificationDiff(field, oldMeasuredRows, newEntries);
 		}
+
+		RerateResult rerateResult = reRateActivitiesFrom(athlete, field, givenDate, rerateActivities, preview);
 
 		// Never touched by the caller (unlike pre-#493) - becameCurrent already accounts for
 		// whether this edit is actually the one that should be live, so re-deriving "the" current

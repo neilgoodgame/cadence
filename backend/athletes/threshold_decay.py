@@ -188,13 +188,20 @@ def simulate(
     start: date,
     end: date,
     seed_v_value: float | None = None,
+    corrections: list[ManualEntry] | None = None,
 ) -> list[Step]:
     """The one entry point - see the module docstring for the effort-unit design and the
     `start`/seed contract. `seed_anchor_value`/`date`/`kind` describe the anchor already on file
     as of just before `start` (all `None` for a cold start with no prior anchor at all).
     `seed_v_value` is the ledger's current value as of `start - 1`, which can differ from
     `seed_anchor_value` once it's partway through decaying away from the anchor - omitted (or for
-    a cold start), it defaults to `seed_anchor_value`, matching every pre-existing caller."""
+    a cold start), it defaults to `seed_anchor_value`, matching every pre-existing caller.
+
+    `corrections` (issue #605) are correction-only manual rows - any date, including before
+    `start` (the latest of those still matters, see `_simulate_enabled`). They only ever act as
+    the sanity-band reference, never as an anchor or a value, so they never emit a `Step`. Only
+    honoured in enabled mode: the disabled branch is never reached by a real caller (every one
+    either only runs for a decay-enabled athlete or forces `enabled=True`)."""
     candidates_by_day = _group_by_day(candidates)
     manual_by_day = {m.date: m for m in sorted(manual_entries, key=lambda m: m.date)}
     if settings.enabled:
@@ -209,6 +216,7 @@ def simulate(
             start,
             end,
             seed_v_value,
+            sorted(corrections or [], key=lambda c: c.date),
         )
     return _simulate_disabled(
         field,
@@ -234,7 +242,27 @@ def _simulate_enabled(
     start: date,
     end: date,
     seed_v_value: float | None = None,
+    corrections: list[ManualEntry] | None = None,
 ) -> list[Step]:
+    """`corrections` must be sorted by date. The sanity-band reference is normally `v` itself,
+    but a correction-only row overrides it from its own date until the next anchor reset (a
+    manual entry or a measured upward reset) - the same "latest of the two" rule
+    threshold_history._replay_full_history_into applies for a decay-disabled athlete (issue
+    #605, following #494). A correction never touches `v`, the anchor, or the successor window,
+    so it can let a later ride qualify but can never itself become the value."""
+    corrections = corrections or []
+    # Seed the override from the latest correction before `start`, unless the seed anchor is at
+    # least as recent (ties go to the correction, same as the decay-off replay's own rule).
+    sanity_override: float | None = None
+    next_correction_idx = 0
+    while next_correction_idx < len(corrections) and corrections[next_correction_idx].date < start:
+        prior = corrections[next_correction_idx]
+        next_correction_idx += 1
+        if seed_anchor_date is None or prior.date >= seed_anchor_date:
+            sanity_override = _round_native(field, prior.value)
+        else:
+            sanity_override = None
+
     a = seed_anchor_date
     anchor_effort = _to_effort(field, seed_anchor_value) if seed_anchor_value is not None else None
     effective_seed_v = seed_v_value if seed_v_value is not None else seed_anchor_value
@@ -257,12 +285,21 @@ def _simulate_enabled(
             anchor_effort = _to_effort(field, manual.value)
             a = d
             v_effort = anchor_effort
+            sanity_override = None
             if manual.already_recorded:
                 suppress_emission = True
             else:
                 anchor_event = (MANUAL, manual.activity_id, d)
 
-        ref_native = _round_native(field, _from_effort(field, v_effort)) if v_effort is not None else None
+        # After the manual reset above, so a same-day correction still wins over it.
+        while next_correction_idx < len(corrections) and corrections[next_correction_idx].date <= d:
+            sanity_override = _round_native(field, corrections[next_correction_idx].value)
+            next_correction_idx += 1
+
+        if sanity_override is not None:
+            ref_native = sanity_override
+        else:
+            ref_native = _round_native(field, _from_effort(field, v_effort)) if v_effort is not None else None
         for candidate in candidates_by_day.get(d, []):
             if (
                 not candidate.accepted
@@ -281,6 +318,7 @@ def _simulate_enabled(
                 a = d
                 v_effort = candidate_effort
                 anchor_event = (MEASURED, candidate.activity_id, d)
+                sanity_override = None
                 ref_native = _round_native(field, _from_effort(field, v_effort))
 
         cutoff = d - timedelta(days=settings.window_days)
