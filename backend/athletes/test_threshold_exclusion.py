@@ -180,3 +180,154 @@ class ExclusionDecayTests(TestCase):
         self.assertNotAlmostEqual(with_power[BAD_DAY], with_hr[BAD_DAY])
         # One activity on a fresh series: the EWMA's first day is load / 42.
         self.assertAlmostEqual(with_hr[BAD_DAY], hr_only / 42)
+
+
+def _client(user, scope="activities:read activities:write"):
+    from rest_framework.test import APIClient
+
+    from authn.oauth_utils import issue_token_pair
+
+    access_token, _ = issue_token_pair(user, scope=scope)
+    client = APIClient()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {access_token.token}")
+    return client
+
+
+class ThresholdExclusionApiTests(TestCase):
+    """The REST API over the exclusion: POST excludes and rebuilds from the activity's date (or
+    previews that with nothing saved), DELETE reverses it, GET lists."""
+
+    def setUp(self):
+        from uploads.processing import recompute_after_duplicate_change
+
+        self.athlete = _athlete("exclude-api@example.cc")
+        self.good, self.bad = _good_and_bad(self.athlete)
+        recompute_after_duplicate_change(self.athlete, fields=["ftp"])
+        self.athlete.refresh_from_db()
+        self.url = f"/v1/athletes/{self.athlete.id}/threshold-exclusions"
+
+    def _ledger(self):
+        return sorted(
+            ThresholdHistory.objects.filter(athlete=self.athlete, field="ftp").values_list(
+                "source_activity_id", "value_numeric", "current_from"
+            ),
+            key=lambda row: row[2],
+        )
+
+    def test_preview_reports_the_effect_and_saves_nothing(self):
+        ledger_before = self._ledger()
+        self.assertEqual(self.athlete.ftp, 304)
+
+        response = _client(self.athlete).post(
+            self.url, {"field": "ftp", "activity_id": self.bad.id, "preview": True}, format="json"
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        body = response.json()
+        self.assertTrue(body["preview"])
+        self.assertEqual((body["value_before"], body["value_after"]), (304, 247))
+        self.assertIn(self.bad.id, {row["source_activity_id"] for row in body["rows_removed"]})
+        self.assertEqual(self._ledger(), ledger_before)
+        self.assertFalse(ExcludedThresholdCandidate.objects.exists())
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 304)
+
+    def test_exclude_rebuilds_the_ledger_and_delete_restores_it(self):
+        ledger_before = self._ledger()
+
+        response = _client(self.athlete).post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["value_after"], 247)
+        self.assertNotIn(self.bad.id, {row[0] for row in self._ledger()})
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 247)
+        exclusion = ExcludedThresholdCandidate.objects.get()
+        self.assertEqual(exclusion.set_by_id, self.athlete.id)
+
+        response = _client(self.athlete).delete(f"{self.url}/ftp/{self.bad.id}")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["value_after"], 304)
+        self.assertEqual(self._ledger(), ledger_before)
+        self.assertFalse(ExcludedThresholdCandidate.objects.exists())
+
+    def test_excluding_twice_changes_nothing_the_second_time(self):
+        client = _client(self.athlete)
+        client.post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json")
+
+        response = client.post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual((response.json()["rows_removed"], response.json()["rows_added"]), ([], []))
+        self.assertEqual(ExcludedThresholdCandidate.objects.count(), 1)
+
+    def test_excluding_removes_an_acceptance_of_the_same_activity(self):
+        AcceptedThresholdCandidate.objects.create(athlete=self.athlete, field="ftp", activity=self.bad)
+
+        _client(self.athlete).post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json")
+
+        self.assertFalse(AcceptedThresholdCandidate.objects.exists())
+
+    def test_list_filters_by_field_and_activity(self):
+        client = _client(self.athlete)
+        client.post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json")
+
+        everything = client.get(self.url).json()["data"]
+        by_activity = client.get(self.url, {"activity_id": self.good.id}).json()["data"]
+        by_field = client.get(self.url, {"field": "critical_run_power"}).json()["data"]
+
+        self.assertEqual([(row["field"], row["activity_id"]) for row in everything], [("ftp", self.bad.id)])
+        self.assertEqual((by_activity, by_field), ([], []))
+
+    def test_rejects_bad_input(self):
+        run = Activity.objects.create(
+            athlete=self.athlete, sport="run", name="Run", start_date=datetime(2026, 3, 2, tzinfo=UTC), moving_time=60
+        )
+        stranger = _athlete("exclude-api-stranger@example.cc")
+        theirs = _ride(stranger, GOOD_DAY, power=200)
+        client = _client(self.athlete)
+
+        cases = [
+            ({"field": "vo2max", "activity_id": self.bad.id}, 400),
+            ({"field": "ftp"}, 400),
+            ({"field": "ftp", "activity_id": run.id}, 400),  # a run can't define ftp
+            ({"field": "ftp", "activity_id": theirs.id}, 404),  # another athlete's activity
+            ({"field": "ftp", "activity_id": "act_missing"}, 404),
+        ]
+        for payload, status in cases:
+            with self.subTest(payload=payload):
+                self.assertEqual(client.post(self.url, payload, format="json").status_code, status)
+        self.assertEqual(client.delete(f"{self.url}/ftp/{self.good.id}").status_code, 404)  # not excluded
+
+    def test_needs_write_access_to_the_athlete(self):
+        """Per-athlete access, as for every REST endpoint: neither backend's REST layer checks
+        OAuth scopes (only the MCP tools do), so a stranger is refused on access, not scope."""
+        outsider = _athlete("exclude-api-outsider@example.cc")
+        client = _client(outsider)
+
+        self.assertEqual(client.get(self.url).status_code, 403)
+        self.assertEqual(
+            client.post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json").status_code, 403
+        )
+        self.assertEqual(client.delete(f"{self.url}/ftp/{self.bad.id}").status_code, 403)
+        self.assertFalse(ExcludedThresholdCandidate.objects.exists())
+
+    def test_a_coach_with_write_access_is_recorded_as_set_by(self):
+        from accounts.models import UserRelationship
+        from authn.jwt_utils import mint_jwt
+
+        coach = _athlete("exclude-api-coach@example.cc", is_coach=True)
+        UserRelationship.objects.create(
+            owner=self.athlete, grantee=coach, role=UserRelationship.ROLE_COACH, status=UserRelationship.STATUS_ACTIVE
+        )
+        token, _claims = mint_jwt(sub=coach.id, athlete_id=self.athlete.id, scopes=["activities:write"], expires_in=60)
+        from rest_framework.test import APIClient
+
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+        response = client.post(self.url, {"field": "ftp", "activity_id": self.bad.id}, format="json")
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(ExcludedThresholdCandidate.objects.get().set_by_id, coach.id)
