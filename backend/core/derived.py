@@ -114,6 +114,7 @@ def _daily_above_z2_load(
     high-frequency dashboard path - revisit if that ever changes."""
     from activities.models import Activity
     from athletes.decay_load import above_z2_load_for_activity
+    from athletes.threshold_history import _excluded_activity_ids
 
     qs = Activity.objects.filter(
         athlete=athlete, sport="bike", start_date__date__range=(start_date, end_date), parent_activity__isnull=True
@@ -121,9 +122,10 @@ def _daily_above_z2_load(
     if not include_duplicates:
         qs = qs.filter(primary_activity__isnull=True)
 
+    excluded_ids = _excluded_activity_ids(athlete, "ftp")  # loaded once, not per activity
     daily_loads: dict[date, float] = {}
     for activity in qs:
-        load = above_z2_load_for_activity(activity, athlete, "ftp") or 0.0
+        load = above_z2_load_for_activity(activity, athlete, "ftp", excluded_ids=excluded_ids) or 0.0
         day = activity.start_date.date()
         daily_loads[day] = daily_loads.get(day, 0.0) + load
     return daily_loads

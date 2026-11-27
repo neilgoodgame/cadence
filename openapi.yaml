@@ -2862,7 +2862,9 @@ paths:
         The activity is then never a candidate for that field: not in the live
         window, a history rebuild, decay, or suggestions. It still counts as
         training: with threshold decay on, its load comes from its heart rate
-        instead of its power. Per field, so a run with a bad power sensor can
+        instead of its power, measured against the athlete's LTHR (with no LTHR
+        set it adds no load, like any activity without usable power). Per
+        field, so a run with a bad power sensor can
         still count for threshold_pace. Removes any accepted suggestion for the
         same field and activity. The field's history is rebuilt from the
         activity's date and later activities' intensity/TSS are re-rated.

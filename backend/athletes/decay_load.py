@@ -70,7 +70,11 @@ def activity_load(
 
 
 def above_z2_load_for_activity(
-    activity: Activity, athlete: User, field: str, reference: int | None = None
+    activity: Activity,
+    athlete: User,
+    field: str,
+    reference: int | None = None,
+    excluded_ids: set[str] | None = None,
 ) -> float | None:
     """Issue #487: activity_load() for exactly one activity, resolving its own histogram and
     reference threshold - the per-activity number list_activity_above_z2_load exposes directly,
@@ -95,7 +99,10 @@ def above_z2_load_for_activity(
     histogram = ensure_histogram(activity)
     # Same HR fallback as load_by_day_for_athlete for an activity excluded from this field's
     # threshold detection (issue #616).
-    power = None if activity.id in _excluded_activity_ids(athlete, field) else histogram.power_30s
+    # A caller listing many activities passes `excluded_ids`, loaded once, to avoid one query each.
+    if excluded_ids is None:
+        excluded_ids = _excluded_activity_ids(athlete, field)
+    power = None if activity.id in excluded_ids else histogram.power_30s
     if not power and not histogram.heartrate:
         return None
     effective_reference = (
@@ -147,7 +154,9 @@ def load_by_day_for_athlete(
 
     # An activity excluded from threshold detection for this field (issue #616) has untrustworthy
     # power, so it counts through its heart rate instead - activity_load's own fallback for an
-    # activity without usable power. The session still counts as training.
+    # activity without usable power. The session still counts as training, provided the athlete
+    # has an LTHR: without one the HR path has no reference, so it adds no load, the same as any
+    # other activity without usable power.
     excluded_ids = _excluded_activity_ids(athlete, field)
     daily_loads: dict[date, float] = {}
     for activity in activities:

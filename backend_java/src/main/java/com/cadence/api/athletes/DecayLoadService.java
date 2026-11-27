@@ -65,7 +65,9 @@ public class DecayLoadService {
 
 		// An activity excluded from threshold detection for this field (issue #616) has
 		// untrustworthy power, so it counts through its heart rate instead - activityLoad's own
-		// fallback for an activity without usable power. The session still counts as training.
+		// fallback for an activity without usable power. The session still counts as training,
+		// provided the athlete has an LTHR: without one the HR path has no reference, so it adds no
+		// load, the same as any other activity without usable power.
 		Set<String> excludedIds = new HashSet<>(
 				excludedThresholdCandidateRepository.findActivityIdsByAthleteIdAndField(athlete.getId(), field));
 		Map<LocalDate, Double> dailyLoads = new HashMap<>();
@@ -104,12 +106,22 @@ public class DecayLoadService {
 	 * power/pace cross-check anywhere in this class) - not something this wrapper introduces or
 	 * fixes. */
 	public Double aboveZ2LoadForActivity(Activity activity, User athlete, ThresholdField field, Double reference) {
+		return aboveZ2LoadForActivity(activity, athlete, field, reference, excludedActivityIds(athlete, field));
+	}
+
+	/** The excluded-activity ids for (athlete, field), for a caller looping over many activities
+	 * to load once and pass to {@link #aboveZ2LoadForActivity(Activity, User, ThresholdField,
+	 * Double, Set)} instead of one query per activity. */
+	public Set<String> excludedActivityIds(User athlete, ThresholdField field) {
+		return new HashSet<>(excludedThresholdCandidateRepository.findActivityIdsByAthleteIdAndField(athlete.getId(), field));
+	}
+
+	public Double aboveZ2LoadForActivity(Activity activity, User athlete, ThresholdField field, Double reference,
+			Set<String> excludedIds) {
 		ActivityIntensityHistogram histogram = histogramService.ensureHistogram(activity);
 		// Same HR fallback as loadByDayForAthlete for an activity excluded from this field's
 		// threshold detection (issue #616).
-		Map<Integer, Integer> power = excludedThresholdCandidateRepository
-				.findByAthleteIdAndFieldAndActivityId(athlete.getId(), field, activity.getId()).isPresent()
-						? null : histogram.getPower30s();
+		Map<Integer, Integer> power = excludedIds.contains(activity.getId()) ? null : histogram.getPower30s();
 		if (power == null && histogram.getHeartrate() == null) {
 			return null;
 		}

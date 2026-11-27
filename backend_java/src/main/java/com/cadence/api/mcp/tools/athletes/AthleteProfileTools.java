@@ -341,12 +341,13 @@ public class AthleteProfileTools {
 		List<Activity> activities = activityRepository.findForThresholdWindow(
 				athleteId, sportFor(effectiveField), start, end, Boolean.TRUE.equals(includeDuplicates));
 
+		java.util.Set<String> excludedIds = decayLoadService.excludedActivityIds(athlete, effectiveField); // once, not per activity
 		List<Map<String, Object>> data = activities.stream().map(activity -> {
 			Map<String, Object> row = new LinkedHashMap<>();
 			row.put("activity_id", activity.getId());
 			row.put("date", activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
 			row.put("above_z2_load",
-					decayLoadService.aboveZ2LoadForActivity(activity, athlete, effectiveField, reference));
+					decayLoadService.aboveZ2LoadForActivity(activity, athlete, effectiveField, reference, excludedIds));
 			return row;
 		}).toList();
 		return Map.of("field", field, "data", data);

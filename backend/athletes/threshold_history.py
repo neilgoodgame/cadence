@@ -1441,12 +1441,24 @@ def candidate_statuses(
             except Exception as e:
                 statuses.append(CandidateStatus(activity.id, activity_date, "error", None, None, None, str(e)))
                 continue
+            # Excluded first, so an excluded activity always reads as excluded - with its implied
+            # value when it has one, or none when it has no qualifying effort at all.
+            if activity.id in excluded_ids:
+                statuses.append(
+                    CandidateStatus(
+                        activity.id,
+                        activity_date,
+                        "excluded",
+                        detail.value if detail else None,
+                        detail.raw_value if detail else None,
+                        detail.window if detail else None,
+                    )
+                )
+                continue
             if detail is None:
                 statuses.append(CandidateStatus(activity.id, activity_date, "too_short", None, None, None))
                 continue
-            if activity.id in excluded_ids:
-                status = "excluded"
-            elif activity.id in accepted_ids:
+            if activity.id in accepted_ids:
                 status = "accepted"
             elif _within_sanity_band(field, detail.value, reference_value, athlete.threshold_sanity_pct):
                 status = "qualified"

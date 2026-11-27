@@ -9,6 +9,7 @@ import com.cadence.api.activities.ActivityRepository;
 import com.cadence.api.activities.Record;
 import com.cadence.api.activities.RecordId;
 import com.cadence.api.activities.RecordRepository;
+import com.cadence.api.athletes.dto.ThresholdSuggestionResponse;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.support.IntegrationTest;
 import com.cadence.api.users.User;
@@ -53,6 +54,10 @@ class ThresholdExclusionIntegrationTest extends IntegrationTest {
 	private DecayLoadService decayLoadService;
 	@Autowired
 	private ActivityIntensityHistogramService histogramService;
+	@Autowired
+	private ThresholdSuggestionService suggestionService;
+	@Autowired
+	private ThresholdExclusionService exclusionService;
 
 	private User athlete(String email) {
 		User user = new User();
@@ -66,16 +71,20 @@ class ThresholdExclusionIntegrationTest extends IntegrationTest {
 	}
 
 	private Activity ride(User owner, LocalDate day, int power, int heartrate) {
+		return ride(owner, day, power, heartrate, 1200);
+	}
+
+	private Activity ride(User owner, LocalDate day, int power, int heartrate, int seconds) {
 		Instant start = day.atTime(7, 0).toInstant(ZoneOffset.UTC);
 		Activity activity = new Activity();
 		activity.setAthlete(owner);
 		activity.setSport(Sport.BIKE);
 		activity.setName("Ride");
 		activity.setStartDate(start);
-		activity.setMovingTime(1200);
+		activity.setMovingTime(seconds);
 		activity = activityRepository.save(activity);
 		List<Record> records = new ArrayList<>();
-		for (int t = 0; t < 1200; t++) {
+		for (int t = 0; t < seconds; t++) {
 			Record record = new Record();
 			record.setId(new RecordId(activity.getId(), start.plusSeconds(t)));
 			record.setActivity(activity);
@@ -258,5 +267,42 @@ class ThresholdExclusionIntegrationTest extends IntegrationTest {
 		assertThat(withHr.get(BAD_DAY)).isNotEqualTo(withPower.get(BAD_DAY));
 		// One activity on a fresh series: the EWMA's first day is load / 42.
 		assertThat(withHr.get(BAD_DAY)).isCloseTo(hrOnly / 42, org.assertj.core.data.Offset.offset(1e-9));
+	}
+
+	// #618 review: suggestions are cached for 24 hours. Excluding a rejected candidate must drop
+	// its card at once, not leave it offering a ride that can no longer be accepted.
+	@Test
+	void excludingClearsTheCachedSuggestions() {
+		User owner = athlete("excl-616-suggestions@example.cc");
+		owner.setThresholdSanityPct(10);
+		owner.setFtp(247);
+		owner = userRepository.save(owner);
+		LocalDate today = LocalDate.now(ZoneOffset.UTC);
+		ride(owner, today.minusDays(5), 260, 150);
+		Activity bad = ride(owner, today.minusDays(2), 320, 170);
+		String suggestionId = "ftp:rejected:" + bad.getId();
+		assertThat(suggestionService.listSuggestions(owner)).extracting(ThresholdSuggestionResponse::id).contains(suggestionId);
+
+		exclusionService.exclude(owner, ThresholdField.FTP, bad.getId(), null, false);
+
+		assertThat(suggestionService.listSuggestions(owner)).extracting(ThresholdSuggestionResponse::id)
+				.doesNotContain(suggestionId);
+	}
+
+	// #618 review: an excluded activity always reads as excluded, even with no qualifying effort.
+	@Test
+	void anExcludedRideWithNoQualifyingEffortReadsAsExcluded() {
+		User owner = athlete("excl-616-too-short@example.cc");
+		owner.setFtp(247);
+		owner = userRepository.save(owner);
+		Activity shortRide = ride(owner, GOOD_DAY, 320, 170, 60); // far too short for a 20-minute window
+		exclude(owner, shortRide, ThresholdField.FTP);
+
+		ThresholdHistoryCalculator.CandidateStatusEntry status = calculator
+				.candidateStatuses(owner, ThresholdField.FTP, GOOD_DAY, GOOD_DAY).stream()
+				.filter(s -> s.activityId().equals(shortRide.getId())).findFirst().orElseThrow();
+
+		assertThat(status.status()).isEqualTo(ThresholdHistoryCalculator.CandidateStatus.EXCLUDED);
+		assertThat(status.impliedValue()).isNull();
 	}
 }

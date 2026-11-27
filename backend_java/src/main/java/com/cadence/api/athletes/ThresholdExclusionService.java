@@ -54,18 +54,20 @@ public class ThresholdExclusionService {
 	private final ActivityRepository activityRepository;
 	private final ActivityService activityService;
 	private final UserRepository userRepository;
+	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final TransactionTemplate transactionTemplate;
 
 	public ThresholdExclusionService(ExcludedThresholdCandidateRepository excludedRepository,
 			AcceptedThresholdCandidateRepository acceptedRepository, ThresholdHistoryRepository thresholdHistoryRepository,
 			ActivityRepository activityRepository, ActivityService activityService, UserRepository userRepository,
-			PlatformTransactionManager transactionManager) {
+			ThresholdSuggestionService thresholdSuggestionService, PlatformTransactionManager transactionManager) {
 		this.excludedRepository = excludedRepository;
 		this.acceptedRepository = acceptedRepository;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.activityRepository = activityRepository;
 		this.activityService = activityService;
 		this.userRepository = userRepository;
+		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
 	}
 
@@ -113,7 +115,9 @@ public class ThresholdExclusionService {
 		return switch (field) {
 			case FTP -> fresh.getFtp();
 			case CRITICAL_RUN_POWER -> fresh.getCriticalRunPower();
-			case THRESHOLD_PACE -> fresh.getThresholdPace();
+			// Unset is "" on the entity - null on the wire, as Django reports it.
+			case THRESHOLD_PACE -> fresh.getThresholdPace() == null || fresh.getThresholdPace().isBlank()
+					? null : fresh.getThresholdPace();
 		};
 	}
 
@@ -123,10 +127,12 @@ public class ThresholdExclusionService {
 	private Effect apply(User athlete, ThresholdField field, Activity activity, BooleanSupplier change, boolean preview,
 			boolean excluded) {
 		LocalDate fromDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
-		return transactionTemplate.execute(status -> {
+		boolean[] changed = { false };
+		Effect effect = transactionTemplate.execute(status -> {
 			Object valueBefore = liveValue(athlete.getId(), field);
 			List<LedgerRow> before = ledgerFrom(athlete, field, fromDate);
-			if (change.getAsBoolean()) {
+			changed[0] = change.getAsBoolean();
+			if (changed[0]) {
 				activityService.recomputeAfterDuplicateChange(athlete, EnumSet.of(field), fromDate);
 			}
 			List<LedgerRow> after = ledgerFrom(athlete, field, fromDate);
@@ -140,6 +146,13 @@ public class ThresholdExclusionService {
 					before.stream().filter(row -> !afterSet.contains(row)).toList(),
 					after.stream().filter(row -> !beforeSet.contains(row)).toList());
 		});
+		if (!preview && changed[0]) {
+			// The ledger was rebuilt, and the activity left (or rejoined) every scan - so the cached
+			// suggestion list may now be wrong, e.g. still offering the excluded ride as a
+			// "rejected" candidate. Same rule as every other ThresholdHistory write.
+			thresholdSuggestionService.invalidate(athlete.getId());
+		}
+		return effect;
 	}
 
 	/** Excludes {@code activityId} from {@code field}'s threshold detection, removing any
@@ -149,16 +162,8 @@ public class ThresholdExclusionService {
 		Activity activity = activityFor(athlete, field, activityId);
 		return apply(athlete, field, activity, () -> {
 			acceptedRepository.deleteByAthleteIdAndFieldAndActivityId(athlete.getId(), field, activity.getId());
-			if (excludedRepository.findByAthleteIdAndFieldAndActivityId(athlete.getId(), field, activity.getId()).isPresent()) {
-				return false;
-			}
-			ExcludedThresholdCandidate exclusion = new ExcludedThresholdCandidate();
-			exclusion.setAthlete(athlete);
-			exclusion.setField(field);
-			exclusion.setActivity(activity);
-			exclusion.setSetBy(setBy);
-			excludedRepository.save(exclusion);
-			return true;
+			return excludedRepository.insertIfAbsent(athlete.getId(), field.wireValue(), activity.getId(),
+					setBy != null ? setBy.getId() : null) > 0;
 		}, preview, true);
 	}
 

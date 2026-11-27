@@ -856,12 +856,18 @@ public class ThresholdHistoryCalculator {
 					entityManager.clear();
 					continue;
 				}
-				if (detail == null) {
+				if (excludedIds.contains(activity.getId())) {
+					// Excluded first, so an excluded activity always reads as excluded - with its
+					// implied value when it has one, or none when it has no qualifying effort.
+					statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.EXCLUDED,
+							detail != null ? detail.value() : null, detail != null ? detail.rawValue() : null,
+							detail != null ? detail.window() : null));
+				}
+				else if (detail == null) {
 					statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.TOO_SHORT, null, null, null));
 				}
 				else {
-					CandidateStatus status = excludedIds.contains(activity.getId()) ? CandidateStatus.EXCLUDED
-							: acceptedIds.contains(activity.getId()) ? CandidateStatus.ACCEPTED
+					CandidateStatus status = acceptedIds.contains(activity.getId()) ? CandidateStatus.ACCEPTED
 							: withinSanityBand(detail.value(), referenceValue, athlete.getThresholdSanityPct()) ? CandidateStatus.QUALIFIED
 							: CandidateStatus.REJECTED_SANITY;
 					statuses.add(new CandidateStatusEntry(

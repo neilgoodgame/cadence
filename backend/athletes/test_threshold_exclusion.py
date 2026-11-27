@@ -331,3 +331,47 @@ class ThresholdExclusionApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(ExcludedThresholdCandidate.objects.get().set_by_id, coach.id)
+
+
+class ExclusionReviewFixTests(TestCase):
+    """#618 review fixes."""
+
+    def test_excluding_clears_the_cached_suggestions(self):
+        """Suggestions are cached for 24 hours. Excluding a rejected candidate must drop its card
+        at once, not leave it offering a ride that can no longer be accepted."""
+        from .threshold_exclusions import exclude
+        from .threshold_suggestions import list_suggestions
+
+        athlete = _athlete("exclude-suggestions@example.cc", threshold_sanity_pct=10, ftp=247)
+        today = date.today()
+        _ride(athlete, today - timedelta(days=5), power=260)
+        bad = _ride(athlete, today - timedelta(days=2), power=320)
+        self.assertIn(f"ftp:rejected:{bad.id}", {s["id"] for s in list_suggestions(athlete)})
+
+        exclude(athlete, "ftp", bad.id)
+
+        self.assertNotIn(f"ftp:rejected:{bad.id}", {s["id"] for s in list_suggestions(athlete)})
+
+    def test_preview_one_is_a_preview(self):
+        athlete = _athlete("exclude-preview-one@example.cc")
+        _good, bad = _good_and_bad(athlete)
+
+        response = _client(athlete).post(
+            f"/v1/athletes/{athlete.id}/threshold-exclusions",
+            {"field": "ftp", "activity_id": bad.id, "preview": 1},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertTrue(response.json()["preview"])
+        self.assertFalse(ExcludedThresholdCandidate.objects.exists())
+
+    def test_an_excluded_ride_with_no_qualifying_effort_reads_as_excluded(self):
+        athlete = _athlete("exclude-too-short@example.cc", ftp=247)
+        short = _ride(athlete, GOOD_DAY, power=320, seconds=60)  # far too short for a 20-minute window
+        _exclude(athlete, short)
+
+        statuses = {s.activity_id: s for s in candidate_statuses(athlete, "ftp", GOOD_DAY, GOOD_DAY)}
+
+        self.assertEqual(statuses[short.id].status, "excluded")
+        self.assertIsNone(statuses[short.id].implied_value)

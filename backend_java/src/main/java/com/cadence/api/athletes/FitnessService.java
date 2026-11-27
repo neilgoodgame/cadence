@@ -162,8 +162,9 @@ public class FitnessService {
 		List<Activity> activities = activityRepository.findForSportRange(
 				athlete.getId(), Sport.BIKE, startInstant, endInstant, includeDuplicates);
 		Map<LocalDate, Double> result = new HashMap<>();
+		java.util.Set<String> excludedIds = decayLoadService.excludedActivityIds(athlete, ThresholdField.FTP); // once, not per activity
 		for (Activity activity : activities) {
-			Double load = decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null);
+			Double load = decayLoadService.aboveZ2LoadForActivity(activity, athlete, ThresholdField.FTP, null, excludedIds);
 			LocalDate day = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 			result.merge(day, load != null ? load : 0.0, Double::sum);
 		}

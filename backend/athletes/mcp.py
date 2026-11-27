@@ -21,7 +21,7 @@ from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_above_z2_fitness_s
 from .decay_load import above_z2_load_for_activity
 from .models import ThresholdHistory
 from .threshold_decay_recompute import gather_preview_steps
-from .threshold_history import FIELD_SPORT, _seconds_to_mmss, candidate_statuses
+from .threshold_history import FIELD_SPORT, _excluded_activity_ids, _seconds_to_mmss, candidate_statuses
 from .views import (
     BEST_EFFORT_PERIOD_DAYS,
     LOWER_IS_BETTER_KINDS,
@@ -628,6 +628,7 @@ class AthleteMCPTools(ScopedMCPToolset):
         )
         if not include_duplicates:
             qs = qs.filter(primary_activity__isnull=True)
+        excluded_ids = _excluded_activity_ids(athlete, field)
 
         return {
             "field": field,
@@ -635,7 +636,9 @@ class AthleteMCPTools(ScopedMCPToolset):
                 {
                     "activity_id": activity.id,
                     "date": activity.start_date.date().isoformat(),
-                    "above_z2_load": above_z2_load_for_activity(activity, athlete, field, reference),
+                    "above_z2_load": above_z2_load_for_activity(
+                        activity, athlete, field, reference, excluded_ids=excluded_ids
+                    ),
                 }
                 for activity in qs.order_by("start_date")
             ],

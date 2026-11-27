@@ -17,6 +17,7 @@ from rest_framework.exceptions import NotFound, ValidationError
 from accounts.models import User
 from activities.models import Activity
 
+from . import threshold_suggestions
 from .models import THRESHOLD_FIELD_CHOICES, AcceptedThresholdCandidate, ExcludedThresholdCandidate, ThresholdHistory
 from .threshold_history import FIELD_SPORT, _row_value, _seconds_to_mmss
 
@@ -92,6 +93,11 @@ def _apply(athlete: User, field: str, activity: Activity, change, preview: bool,
             transaction.set_rollback(True)
     if preview:
         athlete.refresh_from_db()
+    elif changed:
+        # The ledger was rebuilt, and the activity left (or rejoined) every scan - so the cached
+        # suggestion list may now be wrong, e.g. still offering the excluded ride as a "rejected"
+        # candidate. Same rule as every other ThresholdHistory write (see invalidate's docstring).
+        threshold_suggestions.invalidate(athlete.id)
     before_set, after_set = set(before), set(after)
     return ExclusionEffect(
         field=field,

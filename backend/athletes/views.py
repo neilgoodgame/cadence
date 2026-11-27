@@ -1125,7 +1125,13 @@ class ThresholdSuggestionAcceptView(APIView):
 
 
 def _truthy(value) -> bool:
-    return value is True or (isinstance(value, str) and value.lower() in ("1", "true", "yes"))
+    """Lenient on purpose: a preview flag that's misread saves the change for real, so any common
+    spelling of true counts (True, 1, "1", "true", "yes") - matching Jackson's coercion on Java."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value == 1
+    return isinstance(value, str) and value.lower() in ("1", "true", "yes")
 
 
 class ThresholdExclusionListView(APIView):
