@@ -89,7 +89,8 @@ def latest_non_decayed_row(athlete: User, field: str, before: date) -> Threshold
 
 
 def _seed_anchor(athlete: User, field: str, from_date: date) -> tuple[float | None, date | None, str | None]:
-    """The latest non-decayed row before `from_date` - the anchor `simulate` decays away from."""
+    """The latest non-decayed, non-correction row before `from_date` - the anchor `simulate` decays
+    away from (see latest_non_decayed_row)."""
     row = latest_non_decayed_row(athlete, field, from_date)
     if row is None:
         return None, None, None
