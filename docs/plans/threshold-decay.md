@@ -6,10 +6,19 @@ kept as it was proposed rather than rewritten. Where the shipped behaviour diffe
 
 - `threshold_decay_enabled` defaults to **off for every athlete**, new ones included, not on for
   new athletes as section 0 and section 6 recommend.
-- The daily job (4.4) shipped separately, as issue #548.
+- The daily job (4.4) shipped as issue #548 (PR #556). Where 4.4 and section 11 still call it
+  deferred, that's out of date.
 - Correction-only manual rows (backdated edits that never became current) are only ever
   sanity-band references for decay-on athletes. They never seed or anchor a resimulation, and
   they don't stop a later backdated edit becoming current (#605, #607, #608).
+- There is now an MCP tool for threshold settings, `update_threshold_settings` (#612), and
+  `get_threshold_settings` returns the decay settings. 4.8 says none was proposed.
+- Window and sanity: the Java PATCH clamps out-of-range values into range, while Django rejects
+  them with a 400 (6.2 and 9.3 describe both). The MCP tool rejects them in both backends.
+- File names: the migrations are `accounts/0025_user_threshold_decay.py`,
+  `activities/0034_activityintensityhistogram.py`, `V105__user_threshold_decay.sql` and
+  `V104__activity_intensity_histogram.sql`, not the numbers in section 5. The parity fixtures
+  are in `backend/athletes/fixtures/decay/`, not `fixtures/threshold_decay/` (9.2).
 
 Background reading: `docs/thresholds-and-zones.md` (current algorithm, referred to
 below as "the doc", with its section numbers). The parity rule in the root
