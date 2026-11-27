@@ -120,6 +120,13 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 			+ "and a.parentActivity is null and a.primaryActivity is null")
 	List<Activity> findRecomputeCandidatesAfter(@Param("athleteId") String athleteId, @Param("start") Instant start);
 
+	// As findRecomputeCandidatesAfter, one sport only (issue #616): a threshold exclusion changes
+	// one field's ledger, which only that field's sport is rated against.
+	@Query("select a from Activity a where a.athlete.id = :athleteId and a.startDate >= :start "
+			+ "and a.sport = :sport and a.parentActivity is null and a.primaryActivity is null")
+	List<Activity> findRecomputeCandidatesAfterForSport(@Param("athleteId") String athleteId,
+			@Param("start") Instant start, @Param("sport") com.cadence.api.common.domain.Sport sport);
+
 	// ThresholdHistoryService.recordManualValue's re-rate hook after a manual threshold edit -
 	// same multisport/duplicate exclusion as findRecomputeCandidates above, scoped to the one
 	// sport the edited field applies to and only activities on/after the edit's effective date

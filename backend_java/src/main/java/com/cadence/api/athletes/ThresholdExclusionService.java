@@ -2,7 +2,7 @@ package com.cadence.api.athletes;
 
 import com.cadence.api.activities.Activity;
 import com.cadence.api.activities.ActivityRepository;
-import com.cadence.api.activities.ActivityService;
+import com.cadence.api.activities.TssRecomputeService;
 import com.cadence.api.common.domain.Sport;
 import com.cadence.api.common.error.NotFoundException;
 import com.cadence.api.common.error.ValidationException;
@@ -52,20 +52,23 @@ public class ThresholdExclusionService {
 	private final AcceptedThresholdCandidateRepository acceptedRepository;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final ActivityRepository activityRepository;
-	private final ActivityService activityService;
+	private final ThresholdHistoryService thresholdHistoryService;
+	private final TssRecomputeService tssRecomputeService;
 	private final UserRepository userRepository;
 	private final ThresholdSuggestionService thresholdSuggestionService;
 	private final TransactionTemplate transactionTemplate;
 
 	public ThresholdExclusionService(ExcludedThresholdCandidateRepository excludedRepository,
 			AcceptedThresholdCandidateRepository acceptedRepository, ThresholdHistoryRepository thresholdHistoryRepository,
-			ActivityRepository activityRepository, ActivityService activityService, UserRepository userRepository,
+			ActivityRepository activityRepository, ThresholdHistoryService thresholdHistoryService,
+			TssRecomputeService tssRecomputeService, UserRepository userRepository,
 			ThresholdSuggestionService thresholdSuggestionService, PlatformTransactionManager transactionManager) {
 		this.excludedRepository = excludedRepository;
 		this.acceptedRepository = acceptedRepository;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.activityRepository = activityRepository;
-		this.activityService = activityService;
+		this.thresholdHistoryService = thresholdHistoryService;
+		this.tssRecomputeService = tssRecomputeService;
 		this.userRepository = userRepository;
 		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
@@ -121,9 +124,9 @@ public class ThresholdExclusionService {
 		};
 	}
 
-	/** Runs {@code change} (the row write) plus the recompute it triggers, diffing the ledger from
-	 * the activity's date before and after. {@code preview} rolls all of it back, so the diff is
-	 * exactly what a real run would do, with nothing persisted. */
+	/** Runs {@code change} (the row write) plus the ledger rebuild it triggers, diffing the ledger
+	 * from the activity's date before and after. {@code preview} rolls all of it back, so the diff
+	 * is exactly what a real run would do, with nothing persisted. */
 	private Effect apply(User athlete, ThresholdField field, Activity activity, BooleanSupplier change, boolean preview,
 			boolean excluded) {
 		LocalDate fromDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
@@ -133,7 +136,17 @@ public class ThresholdExclusionService {
 			List<LedgerRow> before = ledgerFrom(athlete, field, fromDate);
 			changed[0] = change.getAsBoolean();
 			if (changed[0]) {
-				activityService.recomputeAfterDuplicateChange(athlete, EnumSet.of(field), fromDate);
+				// The same ledger rebuild a duplicate-status change runs (recomputeAfterDuplicateChange),
+				// but the TSS re-rate after it is narrower: only this field's sport is rated against
+				// its ledger, and a preview skips it entirely - the effect reports only the ledger
+				// and the live value, which the re-rate doesn't touch, and re-rating every later
+				// activity from its per-second records is by far the slowest step (an exclusion
+				// months back could otherwise outlast the MCP proxy's timeout, twice per change).
+				thresholdHistoryService.rebuildHistoryFrom(athlete, field, fromDate, (current, total) -> { });
+				if (!preview) {
+					tssRecomputeService.recomputeForAthleteFrom(athlete, fromDate.atStartOfDay(ZoneOffset.UTC).toInstant(),
+							sportFor(field));
+				}
 			}
 			List<LedgerRow> after = ledgerFrom(athlete, field, fromDate);
 			Object valueAfter = liveValue(athlete.getId(), field);

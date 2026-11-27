@@ -466,3 +466,49 @@ class ThresholdExclusionMcpToolTests(TestCase):
 
         with self.assertRaises(PermissionDenied):
             self._tools(scope="activities:write").list_threshold_exclusions()
+
+
+class ExclusionRecomputeScopeTests(TestCase):
+    """#621 review: the TSS re-rate is the slow step, so a preview skips it (the effect reports
+    only the ledger and live value, which it doesn't touch), and a real change re-rates only the
+    field's sport - nothing else is rated against that field's ledger."""
+
+    def setUp(self):
+        from uploads.processing import recompute_after_duplicate_change
+
+        self.athlete = _athlete("exclude-recompute-scope@example.cc")
+        self.good, self.bad = _good_and_bad(self.athlete)
+        recompute_after_duplicate_change(self.athlete, fields=["ftp"])
+        self.athlete.refresh_from_db()
+
+    def test_a_preview_never_re_rates_tss(self):
+        from unittest import mock
+
+        from . import threshold_exclusions
+
+        with mock.patch("uploads.processing.recompute_tss_for_athlete_from") as rerate:
+            effect = threshold_exclusions.exclude(self.athlete, "ftp", self.bad.id, preview=True)
+
+        rerate.assert_not_called()
+        self.assertEqual((effect.value_before, effect.value_after), (304, 247))
+
+    def test_a_real_exclusion_re_rates_only_the_fields_sport(self):
+        from . import threshold_exclusions
+
+        run = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Run",
+            start_date=datetime(BAD_DAY.year, BAD_DAY.month, BAD_DAY.day + 1, 7, 0, tzinfo=UTC),
+            moving_time=1200,
+            tss=999,
+        )
+        self.bad.refresh_from_db()
+        bad_tss_before = self.bad.tss
+
+        threshold_exclusions.exclude(self.athlete, "ftp", self.bad.id)
+
+        self.bad.refresh_from_db()
+        run.refresh_from_db()
+        self.assertGreater(self.bad.tss, bad_tss_before)  # now rated against 247 W, not 304 W
+        self.assertEqual(run.tss, 999)  # a run isn't rated against ftp, so it's left alone
