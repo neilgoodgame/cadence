@@ -133,7 +133,8 @@ public class ThresholdDecayRecomputeService {
 		LocalDate windowStart = fromDate.minusDays(athlete.getThresholdWindowDays());
 		Instant start = startOfDay(windowStart);
 		Instant endInstant = startOfDay(end.plusDays(1));
-		List<Activity> activities = activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, endInstant);
+		List<Activity> activities = calculator.withoutExcluded(
+				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, endInstant), athlete, field);
 		Set<String> acceptedIds = calculator.acceptedActivityIds(athlete, field);
 
 		List<ThresholdDecay.DecayCandidate> candidates = new ArrayList<>();

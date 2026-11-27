@@ -167,8 +167,10 @@ public class AthleteProfileTools {
 			+ "would contribute to the rolling-window algorithm (e.g. 0.95 x best 20-minute power "
 			+ "for ftp), the raw pre-transform value, the window label, and its status: "
 			+ "'qualified' (within the sanity band), 'rejected_sanity' (outside it), 'accepted' "
-			+ "(explicitly accepted despite failing the band), or 'too_short' (no qualifying "
-			+ "effort at all, e.g. too short for the field's window). Classified against the "
+			+ "(explicitly accepted despite failing the band), 'excluded' (excluded from threshold "
+			+ "detection for this field, so never a candidate - its implied value is still "
+			+ "shown), or 'too_short' (no qualifying effort at all, e.g. too short for the "
+			+ "field's window). Classified against the "
 			+ "athlete's *current* profile value, a single snapshot rather than a moving "
 			+ "reference. Useful for seeing what a model would have had to predict between "
 			+ "ledger entries, without reconstructing it by hand from stream summaries. "
@@ -339,12 +341,13 @@ public class AthleteProfileTools {
 		List<Activity> activities = activityRepository.findForThresholdWindow(
 				athleteId, sportFor(effectiveField), start, end, Boolean.TRUE.equals(includeDuplicates));
 
+		java.util.Set<String> excludedIds = decayLoadService.excludedActivityIds(athlete, effectiveField); // once, not per activity
 		List<Map<String, Object>> data = activities.stream().map(activity -> {
 			Map<String, Object> row = new LinkedHashMap<>();
 			row.put("activity_id", activity.getId());
 			row.put("date", activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate());
 			row.put("above_z2_load",
-					decayLoadService.aboveZ2LoadForActivity(activity, athlete, effectiveField, reference));
+					decayLoadService.aboveZ2LoadForActivity(activity, athlete, effectiveField, reference, excludedIds));
 			return row;
 		}).toList();
 		return Map.of("field", field, "data", data);

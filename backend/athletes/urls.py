@@ -19,6 +19,8 @@ from .views import (
     RefreshThresholdView,
     RunningPowerSourceRecomputeJobDetailView,
     RunningPowerSourceRecomputeView,
+    ThresholdExclusionDetailView,
+    ThresholdExclusionListView,
     ThresholdHistoryListView,
     ThresholdSuggestionAcceptView,
     ThresholdSuggestionDismissView,
@@ -103,5 +105,15 @@ urlpatterns = [
         "v1/athletes/<str:id>/threshold-suggestions/<str:suggestion_id>/dismiss",
         ThresholdSuggestionDismissView.as_view(),
         name="athlete-threshold-suggestion-dismiss",
+    ),
+    path(
+        "v1/athletes/<str:id>/threshold-exclusions",
+        ThresholdExclusionListView.as_view(),
+        name="athlete-threshold-exclusions",
+    ),
+    path(
+        "v1/athletes/<str:id>/threshold-exclusions/<str:field>/<str:activity_id>",
+        ThresholdExclusionDetailView.as_view(),
+        name="athlete-threshold-exclusion-detail",
     ),
 ]

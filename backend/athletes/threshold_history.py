@@ -21,7 +21,7 @@ from accounts.models import User
 from activities.models import Activity, Record
 from races.models import Race
 
-from .models import AcceptedThresholdCandidate, ThresholdHistory
+from .models import AcceptedThresholdCandidate, ExcludedThresholdCandidate, ThresholdHistory
 from .threshold_decay import DecaySettings, Step, decay_load_ratio, decay_target
 
 FIELD_SPORT = {
@@ -279,6 +279,16 @@ def _accepted_activity_ids(athlete: User, field: str) -> set[str]:
     )
 
 
+def _excluded_activity_ids(athlete: User, field: str) -> set[str]:
+    """Activity ids excluded from threshold detection for `field` (issue #616, see
+    ExcludedThresholdCandidate) - never a candidate in any scan, and winning over an acceptance
+    of the same activity. Every scan loads this next to _accepted_activity_ids and leaves these
+    activities out of its activity query."""
+    return set(
+        ExcludedThresholdCandidate.objects.filter(athlete=athlete, field=field).values_list("activity_id", flat=True)
+    )
+
+
 def _row_value(field: str, row: ThresholdHistory) -> float | None:
     """A ledger row's own value as a plain float, regardless of field (pace is stored as "M:SS",
     every other field as a plain number) - shared by _manual_anchor_candidate above and
@@ -323,7 +333,9 @@ def current_window_value(athlete: User, field: str, as_of: date | None = None) -
             primary_activity__isnull=True,
             start_date__date__gte=window_start,
             start_date__date__lte=as_of,
-        ).order_by("start_date")
+        )
+        .exclude(id__in=_excluded_activity_ids(athlete, field))
+        .order_by("start_date")
     )
 
     best: Candidate | None = _manual_anchor_candidate(athlete, field, window_start)
@@ -375,9 +387,9 @@ def _replay_full_history_into(
     the "latest non-decayed row" anchor concept threshold_decay_recompute.py's resimulate_suffix
     already uses, applied here without disturbing window-max selection at all."""
     activities = list(
-        Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True).order_by(
-            "start_date"
-        )
+        Activity.objects.filter(athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True)
+        .exclude(id__in=_excluded_activity_ids(athlete, field))
+        .order_by("start_date")
     )
     total = len(activities)
     accepted_ids = _accepted_activity_ids(athlete, field)
@@ -574,7 +586,9 @@ def _replay_from_into(
     activities = list(
         Activity.objects.filter(
             athlete=athlete, sport=FIELD_SPORT[field], primary_activity__isnull=True, start_date__date__gte=scan_start
-        ).order_by("start_date")
+        )
+        .exclude(id__in=_excluded_activity_ids(athlete, field))
+        .order_by("start_date")
     )
     total = len(activities)
     if not activities:
@@ -1332,7 +1346,9 @@ def rejected_candidates(athlete: User, field: str, as_of: date | None = None) ->
             primary_activity__isnull=True,
             start_date__date__gte=window_start,
             start_date__date__lte=as_of,
-        ).order_by("start_date")
+        )
+        .exclude(id__in=_excluded_activity_ids(athlete, field))
+        .order_by("start_date")
     )
 
     candidates: list[RejectedCandidate] = []
@@ -1375,7 +1391,7 @@ def rejected_candidates(athlete: User, field: str, as_of: date | None = None) ->
 class CandidateStatus:
     activity_id: str
     date: date
-    status: str  # "qualified" | "rejected_sanity" | "accepted" | "too_short" | "error"
+    status: str  # "qualified" | "rejected_sanity" | "accepted" | "excluded" | "too_short" | "error"
     implied_value: float | None
     raw_value: float | None
     window: str | None
@@ -1391,7 +1407,8 @@ def candidate_statuses(
     classified against the athlete's *current* profile value - a single snapshot, not a moving
     reference (see current_window_value's own docstring for that distinction): 'qualified'
     (within the sanity band), 'rejected_sanity' (outside it), 'accepted' (explicitly accepted
-    despite failing the band - see AcceptedThresholdCandidate), or 'too_short' (no qualifying
+    despite failing the band - see AcceptedThresholdCandidate), 'excluded' (excluded from
+    threshold detection - see ExcludedThresholdCandidate, issue #616), or 'too_short' (no qualifying
     effort at all, e.g. too short for the field's window). Unlike rejected_candidates, returns
     every activity in range, not just the rejected-and-better subset - built for the Threshold
     suggestions calibration tooling (list_threshold_candidates), to see what a model would have
@@ -1402,6 +1419,7 @@ def candidate_statuses(
     a duplicate-marked activity exactly like current_window_value/rejected_candidates do."""
     reference_value = _athlete_reference_value(athlete, field)
     accepted_ids = _accepted_activity_ids(athlete, field)
+    excluded_ids = _excluded_activity_ids(athlete, field)
 
     qs = Activity.objects.filter(
         athlete=athlete,
@@ -1422,6 +1440,20 @@ def candidate_statuses(
                 detail = _implied_value_detail(activity, field, batched_records.get(activity.id, []))
             except Exception as e:
                 statuses.append(CandidateStatus(activity.id, activity_date, "error", None, None, None, str(e)))
+                continue
+            # Excluded first, so an excluded activity always reads as excluded - with its implied
+            # value when it has one, or none when it has no qualifying effort at all.
+            if activity.id in excluded_ids:
+                statuses.append(
+                    CandidateStatus(
+                        activity.id,
+                        activity_date,
+                        "excluded",
+                        detail.value if detail else None,
+                        detail.raw_value if detail else None,
+                        detail.window if detail else None,
+                    )
+                )
                 continue
             if detail is None:
                 statuses.append(CandidateStatus(activity.id, activity_date, "too_short", None, None, None))
@@ -1534,7 +1566,7 @@ def upcoming_drop(athlete: User, field: str, today: date | None = None) -> dict 
             primary_activity__isnull=True,
             start_date__date__gte=recent_start,
             start_date__date__lte=today,
-        )
+        ).exclude(id__in=_excluded_activity_ids(athlete, field))
         for activity in recent_activities:
             implied = _implied_value(activity, field)
             if implied is not None and abs(implied - current_value) / current_value <= 0.02:

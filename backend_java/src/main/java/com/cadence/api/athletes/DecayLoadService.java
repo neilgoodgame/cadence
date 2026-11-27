@@ -10,8 +10,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 /**
@@ -28,12 +30,14 @@ public class DecayLoadService {
 	private final ActivityRepository activityRepository;
 	private final ActivityIntensityHistogramService histogramService;
 	private final ZoneService zoneService;
+	private final ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository;
 
 	public DecayLoadService(ActivityRepository activityRepository, ActivityIntensityHistogramService histogramService,
-			ZoneService zoneService) {
+			ZoneService zoneService, ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository) {
 		this.activityRepository = activityRepository;
 		this.histogramService = histogramService;
 		this.zoneService = zoneService;
+		this.excludedThresholdCandidateRepository = excludedThresholdCandidateRepository;
 	}
 
 	private static Sport sportFor(ThresholdField field) {
@@ -59,10 +63,18 @@ public class DecayLoadService {
 		List<Activity> activities =
 				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), startInstant, endInstant);
 
+		// An activity excluded from threshold detection for this field (issue #616) has
+		// untrustworthy power, so it counts through its heart rate instead - activityLoad's own
+		// fallback for an activity without usable power. The session still counts as training,
+		// provided the athlete has an LTHR: without one the HR path has no reference, so it adds no
+		// load, the same as any other activity without usable power.
+		Set<String> excludedIds = new HashSet<>(
+				excludedThresholdCandidateRepository.findActivityIdsByAthleteIdAndField(athlete.getId(), field));
 		Map<LocalDate, Double> dailyLoads = new HashMap<>();
 		for (Activity activity : activities) {
 			ActivityIntensityHistogram histogram = histogramService.ensureHistogram(activity);
-			double load = DecayLoad.activityLoad(histogram.getPower30s(), histogram.getHeartrate(), anchorValue, lthr);
+			Map<Integer, Integer> power = excludedIds.contains(activity.getId()) ? null : histogram.getPower30s();
+			double load = DecayLoad.activityLoad(power, histogram.getHeartrate(), anchorValue, lthr);
 			LocalDate activityDate = activity.getStartDate().atZone(ZoneOffset.UTC).toLocalDate();
 			dailyLoads.merge(activityDate, load, Double::sum);
 		}
@@ -94,8 +106,23 @@ public class DecayLoadService {
 	 * power/pace cross-check anywhere in this class) - not something this wrapper introduces or
 	 * fixes. */
 	public Double aboveZ2LoadForActivity(Activity activity, User athlete, ThresholdField field, Double reference) {
+		return aboveZ2LoadForActivity(activity, athlete, field, reference, excludedActivityIds(athlete, field));
+	}
+
+	/** The excluded-activity ids for (athlete, field), for a caller looping over many activities
+	 * to load once and pass to {@link #aboveZ2LoadForActivity(Activity, User, ThresholdField,
+	 * Double, Set)} instead of one query per activity. */
+	public Set<String> excludedActivityIds(User athlete, ThresholdField field) {
+		return new HashSet<>(excludedThresholdCandidateRepository.findActivityIdsByAthleteIdAndField(athlete.getId(), field));
+	}
+
+	public Double aboveZ2LoadForActivity(Activity activity, User athlete, ThresholdField field, Double reference,
+			Set<String> excludedIds) {
 		ActivityIntensityHistogram histogram = histogramService.ensureHistogram(activity);
-		if (histogram.getPower30s() == null && histogram.getHeartrate() == null) {
+		// Same HR fallback as loadByDayForAthlete for an activity excluded from this field's
+		// threshold detection (issue #616).
+		Map<Integer, Integer> power = excludedIds.contains(activity.getId()) ? null : histogram.getPower30s();
+		if (power == null && histogram.getHeartrate() == null) {
 			return null;
 		}
 		Double effectiveReference =
@@ -104,6 +131,6 @@ public class DecayLoadService {
 			return null;
 		}
 		Double lthr = athlete.getLthr() != null ? athlete.getLthr().doubleValue() : null;
-		return DecayLoad.activityLoad(histogram.getPower30s(), histogram.getHeartrate(), effectiveReference, lthr);
+		return DecayLoad.activityLoad(power, histogram.getHeartrate(), effectiveReference, lthr);
 	}
 }

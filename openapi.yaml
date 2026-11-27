@@ -2818,6 +2818,120 @@ paths:
         "204":
           description: Reverted.
 
+  /v1/athletes/{id}/threshold-exclusions:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+    get:
+      tags: [Athletes & zones]
+      summary: List threshold exclusions
+      operationId: listThresholdExclusions
+      description: >
+        The activities excluded from threshold detection, oldest activity first.
+        See createThresholdExclusion.
+      parameters:
+        - name: field
+          in: query
+          required: false
+          schema: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+        - name: activity_id
+          in: query
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: The exclusions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/ThresholdExclusion" }
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [Athletes & zones]
+      summary: Exclude an activity from threshold detection
+      operationId: createThresholdExclusion
+      description: >
+        Excludes an activity from one field's threshold detection, for data known
+        to be wrong for that field (e.g. a ride on an uncalibrated power meter).
+        The activity is then never a candidate for that field: not in the live
+        window, a history rebuild, decay, or suggestions. It still counts as
+        training: with threshold decay on, its load comes from its heart rate
+        instead of its power, measured against the athlete's LTHR (with no LTHR
+        set it adds no load, like any activity without usable power). Per
+        field, so a run with a bad power sensor can
+        still count for threshold_pace. Removes any accepted suggestion for the
+        same field and activity. The field's history is rebuilt from the
+        activity's date and later activities' intensity/TSS are re-rated.
+        Idempotent: excluding an already-excluded activity changes nothing.
+        With preview, returns the same effect without saving anything.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [field, activity_id]
+              properties:
+                field: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+                activity_id: { type: string }
+                preview: { type: boolean, default: false }
+      responses:
+        "200":
+          description: What the exclusion changed (or, with preview, would change).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThresholdExclusionEffect" }
+        "400":
+          description: Unknown field, missing activity_id, or an activity whose sport can't define the field.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/athletes/{id}/threshold-exclusions/{field}/{activity_id}:
+    parameters:
+      - $ref: "#/components/parameters/AthleteId"
+      - name: field
+        in: path
+        required: true
+        schema: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+      - name: activity_id
+        in: path
+        required: true
+        schema: { type: string }
+    delete:
+      tags: [Athletes & zones]
+      summary: Remove a threshold exclusion
+      operationId: deleteThresholdExclusion
+      description: >
+        Removes the exclusion, so the activity counts again, and rebuilds the
+        field's history from its date. 404 if the activity isn't excluded for
+        this field. With preview, returns the effect without saving anything.
+      parameters:
+        - name: preview
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: What removing the exclusion changed (or, with preview, would change).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ThresholdExclusionEffect" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /v1/athletes/{id}/zones:
     parameters:
       - $ref: "#/components/parameters/AthleteId"
@@ -6200,6 +6314,50 @@ components:
               description: The value this field is currently easing towards.
               example: 245
 
+    ThresholdExclusion:
+      type: object
+      description: An activity excluded from one field's threshold detection.
+      properties:
+        field: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+        activity_id: { type: string }
+        activity_name: { type: string }
+        activity_date: { type: string, format: date }
+        set_by_user_id:
+          type: [string, "null"]
+          description: Who excluded it - the athlete, or a coach with write access.
+        created_at: { type: string, format: date-time }
+    ThresholdExclusionEffect:
+      type: object
+      description: >
+        What excluding an activity (or removing its exclusion) changed in the
+        field's history, from the activity's date on. Rows are compared on
+        kind, source activity, dates and value.
+      properties:
+        field: { type: string, enum: [ftp, critical_run_power, threshold_pace] }
+        activity_id: { type: string }
+        excluded: { type: boolean, description: The activity's state after this call. }
+        preview: { type: boolean, description: True if nothing was saved. }
+        value_before:
+          description: The field's live value before. Watts, or "M:SS" per km for threshold_pace.
+          oneOf: [{ type: integer }, { type: string }, { type: "null" }]
+        value_after:
+          description: The field's live value after.
+          oneOf: [{ type: integer }, { type: string }, { type: "null" }]
+        rows_removed:
+          type: array
+          items: { $ref: "#/components/schemas/ThresholdExclusionLedgerRow" }
+        rows_added:
+          type: array
+          items: { $ref: "#/components/schemas/ThresholdExclusionLedgerRow" }
+    ThresholdExclusionLedgerRow:
+      type: object
+      properties:
+        kind: { type: string, enum: [measured, manual, decayed] }
+        source_activity_id: { type: [string, "null"] }
+        effective_from: { type: string, format: date }
+        current_from: { type: string, format: date }
+        value:
+          oneOf: [{ type: integer }, { type: string }, { type: "null" }]
     ThresholdHistoryEntry:
       type: object
       description: One ledger row - a value that was effective from a given date until superseded.

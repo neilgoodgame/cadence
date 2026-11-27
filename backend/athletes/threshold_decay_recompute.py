@@ -29,6 +29,7 @@ from .threshold_history import (
     _accepted_activity_ids,
     _batched_records_for,
     _chunked,
+    _excluded_activity_ids,
     _implied_value_detail,
     _latest_entry,
     _rerate_activities_from,
@@ -110,7 +111,9 @@ def _gather_candidates(athlete: User, field: str, from_date: date, end: date) ->
             primary_activity__isnull=True,
             start_date__date__gte=window_start,
             start_date__date__lte=end,
-        ).order_by("start_date")
+        )
+        .exclude(id__in=_excluded_activity_ids(athlete, field))
+        .order_by("start_date")
     )
     candidates: list[DecayCandidate] = []
     for chunk in _chunked(activities):

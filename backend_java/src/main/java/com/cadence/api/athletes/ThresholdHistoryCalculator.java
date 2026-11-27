@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,7 +55,11 @@ public class ThresholdHistoryCalculator {
 	}
 
 	public enum CandidateStatus {
-		QUALIFIED, REJECTED_SANITY, ACCEPTED, TOO_SHORT,
+		QUALIFIED, REJECTED_SANITY, ACCEPTED,
+		// Excluded from threshold detection for this field (issue #616) - never a candidate, but
+		// its implied value is still reported.
+		EXCLUDED,
+		TOO_SHORT,
 		// One activity's implied-value computation threw - surfaced as this status with a reason
 		// instead of failing list_threshold_candidates' whole call (issue #500).
 		ERROR
@@ -103,18 +108,21 @@ public class ThresholdHistoryCalculator {
 	private final EntityManager entityManager;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository;
+	private final ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository;
 	private final RaceRepository raceRepository;
 	private final DecayLoadService decayLoadService;
 
 	public ThresholdHistoryCalculator(ActivityRepository activityRepository, RecordRepository recordRepository,
 			EntityManager entityManager, ThresholdHistoryRepository thresholdHistoryRepository,
-			AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository, RaceRepository raceRepository,
+			AcceptedThresholdCandidateRepository acceptedThresholdCandidateRepository,
+			ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository, RaceRepository raceRepository,
 			DecayLoadService decayLoadService) {
 		this.activityRepository = activityRepository;
 		this.recordRepository = recordRepository;
 		this.entityManager = entityManager;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.acceptedThresholdCandidateRepository = acceptedThresholdCandidateRepository;
+		this.excludedThresholdCandidateRepository = excludedThresholdCandidateRepository;
 		this.raceRepository = raceRepository;
 		this.decayLoadService = decayLoadService;
 	}
@@ -299,6 +307,22 @@ public class ThresholdHistoryCalculator {
 				.collect(Collectors.toSet());
 	}
 
+	/** Activity ids excluded from threshold detection for {@code field} (issue #616, see
+	 * {@link ExcludedThresholdCandidate}) - never a candidate in any scan, and winning over an
+	 * acceptance of the same activity. Mirrors Python's threshold_history._excluded_activity_ids. */
+	Set<String> excludedActivityIds(User athlete, ThresholdField field) {
+		return new HashSet<>(
+				excludedThresholdCandidateRepository.findActivityIdsByAthleteIdAndField(athlete.getId(), field));
+	}
+
+	/** {@code activities} minus those excluded from threshold detection for {@code field} -
+	 * applied to every scan's activity query. */
+	List<Activity> withoutExcluded(List<Activity> activities, User athlete, ThresholdField field) {
+		Set<String> excluded = excludedActivityIds(athlete, field);
+		return excluded.isEmpty() ? activities
+				: activities.stream().filter(a -> !excluded.contains(a.getId())).toList();
+	}
+
 	/** A manual value lasts until it's beaten by a later qualifying activity or ages out of the
 	 * window, same as any other ledger entry (issue #484) - currentWindowValue's activity-only
 	 * scan can't see the ledger on its own, so a still-fresh manual row is injected here as a
@@ -341,8 +365,8 @@ public class ThresholdHistoryCalculator {
 
 		Instant start = windowStart.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant end = effectiveAsOf.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-		List<Activity> activities =
-				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+		List<Activity> activities = withoutExcluded(
+				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end), athlete, field);
 
 		Candidate best = manualAnchorCandidate(athlete, field, windowStart);
 		for (List<Activity> chunk : chunked(activities)) {
@@ -405,7 +429,9 @@ public class ThresholdHistoryCalculator {
 	 * total)} after each activity is considered - what the bulk rebuild endpoint's SSE progress
 	 * reads. */
 	public List<ThresholdHistoryEntry> replayFullHistory(User athlete, ThresholdField field, BiConsumer<Integer, Integer> onProgress) {
-		List<Activity> activities = activityRepository.findByAthleteIdAndSportAndPrimaryActivityIsNullOrderByStartDate(athlete.getId(), sportFor(field));
+		List<Activity> activities = withoutExcluded(
+				activityRepository.findByAthleteIdAndSportAndPrimaryActivityIsNullOrderByStartDate(athlete.getId(), sportFor(field)),
+				athlete, field);
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 		List<ThresholdHistory> manualRows = thresholdHistoryRepository
 				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(), field, ThresholdHistoryKind.MANUAL);
@@ -587,7 +613,8 @@ public class ThresholdHistoryCalculator {
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
 		Instant start = scanStart.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant end = LocalDate.now().plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-		List<Activity> activities = activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+		List<Activity> activities = withoutExcluded(
+				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end), athlete, field);
 		if (activities.isEmpty()) {
 			return List.of();
 		}
@@ -745,8 +772,8 @@ public class ThresholdHistoryCalculator {
 
 		Instant start = windowStart.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant end = effectiveAsOf.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-		List<Activity> activities =
-				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end);
+		List<Activity> activities = withoutExcluded(
+				activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), start, end), athlete, field);
 
 		List<RejectedCandidate> candidates = new ArrayList<>();
 		for (List<Activity> chunk : chunked(activities)) {
@@ -807,6 +834,7 @@ public class ThresholdHistoryCalculator {
 			User athlete, ThresholdField field, LocalDate from, LocalDate to, boolean includeDuplicates) {
 		Double referenceValue = athleteReferenceValue(athlete, field);
 		Set<String> acceptedIds = acceptedActivityIds(athlete, field);
+		Set<String> excludedIds = excludedActivityIds(athlete, field);
 
 		Instant start = from.atStartOfDay(ZoneOffset.UTC).toInstant();
 		Instant end = to.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
@@ -828,7 +856,14 @@ public class ThresholdHistoryCalculator {
 					entityManager.clear();
 					continue;
 				}
-				if (detail == null) {
+				if (excludedIds.contains(activity.getId())) {
+					// Excluded first, so an excluded activity always reads as excluded - with its
+					// implied value when it has one, or none when it has no qualifying effort.
+					statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.EXCLUDED,
+							detail != null ? detail.value() : null, detail != null ? detail.rawValue() : null,
+							detail != null ? detail.window() : null));
+				}
+				else if (detail == null) {
 					statuses.add(new CandidateStatusEntry(activity.getId(), activityDate, CandidateStatus.TOO_SHORT, null, null, null));
 				}
 				else {
@@ -927,8 +962,9 @@ public class ThresholdHistoryCalculator {
 		if (currentValue != null && currentValue != 0) {
 			Instant recentStart = effectiveToday.minusDays(14).atStartOfDay(ZoneOffset.UTC).toInstant();
 			Instant recentEnd = effectiveToday.plusDays(1).atStartOfDay(ZoneOffset.UTC).toInstant();
-			List<Activity> recentActivities =
-					activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), recentStart, recentEnd);
+			List<Activity> recentActivities = withoutExcluded(
+					activityRepository.findForThresholdWindow(athlete.getId(), sportFor(field), recentStart, recentEnd),
+					athlete, field);
 			for (Activity activity : recentActivities) {
 				Double implied = impliedValue(activity, athlete, field);
 				entityManager.clear();

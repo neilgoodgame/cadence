@@ -21,7 +21,7 @@ from core.auth_context import get_effective_athlete_id
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_fitness_series
 from core.permissions import user_may_read, user_may_write
 
-from . import threshold_suggestions
+from . import threshold_exclusions, threshold_suggestions
 from .decay_load import load_by_day_for_athlete
 from .models import BestEffortRecomputeJob, RunningPowerSourceRecomputeJob, ThresholdHistory, ZoneSet
 from .serializers import (
@@ -1122,6 +1122,61 @@ class ThresholdSuggestionAcceptView(APIView):
         field, activity_id = _parse_suggestion_id(suggestion_id, expected_kind="rejected")
         threshold_suggestions.undo_accept(athlete, field, activity_id)
         return Response(status=204)
+
+
+def _truthy(value) -> bool:
+    """Lenient on purpose: a preview flag that's misread saves the change for real, so any common
+    spelling of true counts (True, 1, "1", "true", "yes") - matching Jackson's coercion on Java."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value == 1
+    return isinstance(value, str) and value.lower() in ("1", "true", "yes")
+
+
+class ThresholdExclusionListView(APIView):
+    """Issue #616. GET .../threshold-exclusions lists the athlete's exclusions (optionally only
+    one field's, or one activity's). POST excludes an activity from one field's threshold
+    detection and rebuilds that field's ledger from the activity's date; `preview: true` returns
+    the same effect without saving anything."""
+
+    def get(self, request: Request, id: str) -> Response:
+        _require_read(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        rows = threshold_exclusions.list_exclusions(
+            athlete, field=request.query_params.get("field"), activity_id=request.query_params.get("activity_id")
+        )
+        return Response({"data": [threshold_exclusions.exclusion_wire(row) for row in rows]})
+
+    def post(self, request: Request, id: str) -> Response:
+        sub = _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        activity_id = request.data.get("activity_id")
+        if not activity_id:
+            raise ValidationError({"activity_id": "This field is required."})
+        set_by = athlete if sub == id else get_object_or_404(User, pk=sub)
+        effect = threshold_exclusions.exclude(
+            athlete,
+            request.data.get("field"),
+            activity_id,
+            set_by=set_by,
+            preview=_truthy(request.data.get("preview", False)),
+        )
+        return Response(threshold_exclusions.effect_wire(effect))
+
+
+class ThresholdExclusionDetailView(APIView):
+    """Issue #616. DELETE .../threshold-exclusions/{field}/{activity_id} removes an exclusion, so
+    the activity counts again, and rebuilds that field's ledger from its date. `?preview=true`
+    returns the effect without saving anything."""
+
+    def delete(self, request: Request, id: str, field: str, activity_id: str) -> Response:
+        _require_write(request, id)
+        athlete = get_object_or_404(User, pk=id)
+        effect = threshold_exclusions.include(
+            athlete, field, activity_id, preview=_truthy(request.query_params.get("preview", "false"))
+        )
+        return Response(threshold_exclusions.effect_wire(effect))
 
 
 class ThresholdSuggestionDismissView(APIView):

@@ -21,7 +21,7 @@ from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_above_z2_fitness_s
 from .decay_load import above_z2_load_for_activity
 from .models import ThresholdHistory
 from .threshold_decay_recompute import gather_preview_steps
-from .threshold_history import FIELD_SPORT, _seconds_to_mmss, candidate_statuses
+from .threshold_history import FIELD_SPORT, _excluded_activity_ids, _seconds_to_mmss, candidate_statuses
 from .views import (
     BEST_EFFORT_PERIOD_DAYS,
     LOWER_IS_BETTER_KINDS,
@@ -407,8 +407,10 @@ class AthleteMCPTools(ScopedMCPToolset):
         to_date, return the implied value it would contribute to the rolling-window algorithm
         (e.g. 0.95 x best 20-minute power for ftp), the raw pre-transform value, the window
         label, and its status: 'qualified' (within the sanity band), 'rejected_sanity' (outside
-        it), 'accepted' (explicitly accepted despite failing the band), or 'too_short' (no
-        qualifying effort at all, e.g. too short for the field's window). Classified against the
+        it), 'accepted' (explicitly accepted despite failing the band), 'excluded' (excluded from
+        threshold detection for this field, so never a candidate - its implied value is still
+        shown), or 'too_short' (no qualifying effort at all, e.g. too short for the field's
+        window). Classified against the
         athlete's *current* profile value, a single snapshot rather than a moving reference - see
         current_window_value's own docstring for that distinction. Useful for seeing what a model
         would have had to predict between ledger entries, without reconstructing it by hand from
@@ -626,6 +628,7 @@ class AthleteMCPTools(ScopedMCPToolset):
         )
         if not include_duplicates:
             qs = qs.filter(primary_activity__isnull=True)
+        excluded_ids = _excluded_activity_ids(athlete, field)
 
         return {
             "field": field,
@@ -633,7 +636,9 @@ class AthleteMCPTools(ScopedMCPToolset):
                 {
                     "activity_id": activity.id,
                     "date": activity.start_date.date().isoformat(),
-                    "above_z2_load": above_z2_load_for_activity(activity, athlete, field, reference),
+                    "above_z2_load": above_z2_load_for_activity(
+                        activity, athlete, field, reference, excluded_ids=excluded_ids
+                    ),
                 }
                 for activity in qs.order_by("start_date")
             ],

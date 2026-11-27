@@ -182,6 +182,33 @@ class AcceptedThresholdCandidate(models.Model):
         return f"{self.athlete_id} {self.field} {self.activity_id}"
 
 
+class ExcludedThresholdCandidate(models.Model):
+    """An athlete (or a coach with write access) excluded this activity from threshold detection
+    for one field - its data is known to be wrong for that field (issue #616, e.g. a ride on an
+    uncalibrated power meter). The mirror image of AcceptedThresholdCandidate: an excluded
+    activity is never a candidate in any scan (live window, replay, rebuild, decay, suggestions,
+    candidate statuses), even across a full rebuild, and wins over an acceptance of the same
+    (field, activity). Its decay load comes from its heart rate instead of its power (see
+    decay_load.py). Per field, so a run with a bad power sensor can still count for pace."""
+
+    athlete = models.ForeignKey(User, on_delete=models.CASCADE, related_name="excluded_threshold_candidates")
+    field = models.CharField(max_length=20, choices=THRESHOLD_FIELD_CHOICES)
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="excluded_threshold_candidates")
+    set_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["athlete", "field", "activity"], name="unique_excluded_threshold_candidate"
+            ),
+        ]
+        verbose_name_plural = "excluded threshold candidates"
+
+    def __str__(self) -> str:
+        return f"{self.athlete_id} {self.field} {self.activity_id}"
+
+
 class BestEffortRecomputeJob(PrefixedIDModel):
     """Tracks an in-progress "recompute best efforts" run - see athletes/tasks.py's
     run_best_effort_recompute. Runs via Celery rather than synchronously (the original
