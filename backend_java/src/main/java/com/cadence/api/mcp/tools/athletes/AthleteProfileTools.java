@@ -193,23 +193,33 @@ public class AthleteProfileTools {
 
 	@McpTool(name = "get_threshold_settings", description = "Get the authenticated athlete's "
 			+ "threshold-related settings: the trailing window (thresholdWindowDays) and "
-			+ "sanity-band width (thresholdSanityPct) the rolling-window algorithm uses, and which "
-			+ "power-calculation method/source each threshold field is derived from. Useful for "
-			+ "knowing which parameters a given ledger was produced under before calibrating "
-			+ "anything against it.",
+			+ "sanity-band width (thresholdSanityPct) the rolling-window algorithm uses, which "
+			+ "power-calculation method/source each threshold field is derived from, and the "
+			+ "threshold-decay settings (thresholdDecayEnabled, tauDays, minPct, maxPct). Useful "
+			+ "for knowing which parameters a given ledger was produced under before calibrating "
+			+ "anything against it. Change them with update_threshold_settings.",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public Map<String, Object> getThresholdSettings() {
 		authorizer.requireScope(McpScopes.ACTIVITIES_READ);
 		String athleteId = accessGuard.effectiveAthleteId();
 		accessGuard.requireRead(athleteId);
-		User athlete = userService.getById(athleteId);
-		return Map.of(
-				"threshold_window_days", athlete.getThresholdWindowDays(),
-				"threshold_sanity_pct", athlete.getThresholdSanityPct(),
-				"ftp_calculation_method", athlete.getFtpCalculationMethod(),
-				"running_power_source", athlete.getRunningPowerSource(),
-				"bike_power_source", athlete.getBikePowerSource());
+		return thresholdSettingsOf(userService.getById(athleteId));
+	}
+
+	/** get_threshold_settings' body, shared with update_threshold_settings' return value. */
+	public Map<String, Object> thresholdSettingsOf(User athlete) {
+		Map<String, Object> result = new LinkedHashMap<>();
+		result.put("threshold_window_days", athlete.getThresholdWindowDays());
+		result.put("threshold_sanity_pct", athlete.getThresholdSanityPct());
+		result.put("ftp_calculation_method", athlete.getFtpCalculationMethod());
+		result.put("running_power_source", athlete.getRunningPowerSource());
+		result.put("bike_power_source", athlete.getBikePowerSource());
+		result.put("threshold_decay_enabled", athlete.isThresholdDecayEnabled());
+		result.put("threshold_decay_tau_days", athlete.getThresholdDecayTauDays());
+		result.put("threshold_decay_min_pct", athlete.getThresholdDecayMinPct());
+		result.put("threshold_decay_max_pct", athlete.getThresholdDecayMaxPct());
+		return result;
 	}
 
 	@McpTool(name = "preview_threshold_decay", description = "Issue #487: models what the "
