@@ -60,7 +60,18 @@ public class TssRecomputeService {
 	 * onward, so earlier activities' stored references (and thus ratings) are untouched. */
 	@Transactional
 	public int recomputeForAthleteFrom(User athlete, Instant start) {
-		List<Activity> activities = activityRepository.findRecomputeCandidatesAfter(athlete.getId(), start);
+		return rateAll(activityRepository.findRecomputeCandidatesAfter(athlete.getId(), start), athlete);
+	}
+
+	/** As {@link #recomputeForAthleteFrom(User, Instant)}, one sport only (issue #616) - for a
+	 * change to one threshold field's ledger, which only that field's sport is rated against.
+	 * Mirrors Django's recompute_tss_for_athlete_from(sport=...). */
+	@Transactional
+	public int recomputeForAthleteFrom(User athlete, Instant start, com.cadence.api.common.domain.Sport sport) {
+		return rateAll(activityRepository.findRecomputeCandidatesAfterForSport(athlete.getId(), start, sport), athlete);
+	}
+
+	private int rateAll(List<Activity> activities, User athlete) {
 		int updated = 0;
 		for (Activity activity : activities) {
 			if (rate(activity, athlete)) {

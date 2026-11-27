@@ -1,8 +1,8 @@
 """Issue #616: excluding an activity from threshold detection for one field - the service behind
 POST/GET/DELETE /v1/athletes/{id}/threshold-exclusions. Excluding (or removing an exclusion)
-rebuilds that field's ledger from the activity's date and re-rates TSS/intensity from there,
-through the same recompute_after_duplicate_change cascade a duplicate-status change uses, since
-both take one activity out of (or put it back into) threshold detection. Mirrors backend_java's
+rebuilds that field's ledger from the activity's date and re-rates that field's sport's
+TSS/intensity from there - the recompute_after_duplicate_change cascade a duplicate-status change
+runs, narrowed to one sport (see _apply). Mirrors backend_java's
 ThresholdExclusionService.
 """
 
@@ -19,7 +19,7 @@ from activities.models import Activity
 
 from . import threshold_suggestions
 from .models import THRESHOLD_FIELD_CHOICES, AcceptedThresholdCandidate, ExcludedThresholdCandidate, ThresholdHistory
-from .threshold_history import FIELD_SPORT, _row_value, _seconds_to_mmss
+from .threshold_history import FIELD_SPORT, _row_value, _seconds_to_mmss, rebuild_history_stream_from
 
 _FIELDS = {value for value, _label in THRESHOLD_FIELD_CHOICES}
 
@@ -75,10 +75,10 @@ def _live_value(athlete: User, field: str) -> float | None:
 
 
 def _apply(athlete: User, field: str, activity: Activity, change, preview: bool, excluded: bool) -> ExclusionEffect:
-    """Runs `change` (the row write) plus the recompute it triggers, diffing the ledger from the
-    activity's date before and after. `preview` rolls all of it back, so the diff is exactly what
+    """Runs `change` (the row write) plus the ledger rebuild it triggers, diffing the ledger from
+    the activity's date before and after. `preview` rolls all of it back, so the diff is exactly what
     a real run would do, with nothing persisted."""
-    from uploads.processing import recompute_after_duplicate_change  # uploads imports athletes
+    from uploads.processing import recompute_tss_for_athlete_from  # uploads imports athletes
 
     from_date = activity.start_date.date()
     with transaction.atomic():
@@ -86,7 +86,16 @@ def _apply(athlete: User, field: str, activity: Activity, change, preview: bool,
         before = _ledger_from(athlete, field, from_date)
         changed = change()
         if changed:
-            recompute_after_duplicate_change(athlete, fields=[field], from_date=from_date)
+            # The same ledger rebuild a duplicate-status change runs (recompute_after_duplicate_
+            # change), but the TSS re-rate after it is narrower: only this field's sport is rated
+            # against its ledger, and a preview skips it entirely - the effect reports only the
+            # ledger and the live value, which the re-rate doesn't touch, and re-rating every later
+            # activity from its per-second records is by far the slowest step (an exclusion months
+            # back could otherwise outlast the MCP proxy's timeout, twice per change).
+            for _ in rebuild_history_stream_from(athlete, field, from_date):
+                pass
+            if not preview:
+                recompute_tss_for_athlete_from(athlete, from_date, sport=FIELD_SPORT[field])
         after = _ledger_from(athlete, field, from_date)
         value_after = _live_value(athlete, field)
         if preview:

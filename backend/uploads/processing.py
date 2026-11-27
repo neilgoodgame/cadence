@@ -872,17 +872,20 @@ def recompute_tss_for_athlete(athlete: User) -> int:
     return updated
 
 
-def recompute_tss_for_athlete_from(athlete: User, start: date) -> int:
+def recompute_tss_for_athlete_from(athlete: User, start: date, sport: str | None = None) -> int:
     """As recompute_tss_for_athlete, but only activities dated on/after `start` (issue #545) - a
     duplicate-status change on an activity dated d can only alter the ledger from d onward, so
-    earlier activities' stored references (and thus ratings) are untouched. Mirrors
-    backend_java's TssRecomputeService.recomputeForAthleteFrom - keep the two in sync when
-    changing either."""
+    earlier activities' stored references (and thus ratings) are untouched. `sport` (issue #616)
+    narrows it further to one sport, for a change to one threshold field's ledger, which only
+    that field's sport is rated against. Mirrors backend_java's
+    TssRecomputeService.recomputeForAthleteFrom - keep the two in sync when changing either."""
     from activities.models import Activity
 
     candidates = Activity.objects.filter(
         athlete=athlete, parent_activity__isnull=True, start_date__date__gte=start
     ).exclude(sport__in=("multisport", "transition"))
+    if sport is not None:
+        candidates = candidates.filter(sport=sport)
     updated = 0
     for activity in candidates:
         power_series = list(activity.records.order_by("t").values_list("power", flat=True))

@@ -375,3 +375,140 @@ class ExclusionReviewFixTests(TestCase):
 
         self.assertEqual(statuses[short.id].status, "excluded")
         self.assertIsNone(statuses[short.id].implied_value)
+
+
+class ThresholdExclusionMcpToolTests(TestCase):
+    """The MCP tools over the same service. Unlike the REST POST, preview is the default, so an
+    assistant has to ask twice before anything is saved."""
+
+    def setUp(self):
+        from uploads.processing import recompute_after_duplicate_change
+
+        self.athlete = _athlete("exclude-mcp@example.cc")
+        self.good, self.bad = _good_and_bad(self.athlete)
+        recompute_after_duplicate_change(self.athlete, fields=["ftp"])
+        self.athlete.refresh_from_db()
+
+    def _tools(self, scope="activities:read activities:write"):
+        from types import SimpleNamespace
+
+        from authn.oauth_utils import issue_token_pair
+
+        from .mcp import AthleteMCPTools
+
+        access_token, _ = issue_token_pair(self.athlete, scope=scope)
+        return AthleteMCPTools(request=SimpleNamespace(user=self.athlete, auth=access_token))
+
+    def test_exclude_previews_by_default_and_saves_nothing(self):
+        result = self._tools().exclude_threshold_candidate(field="ftp", activity_id=self.bad.id)
+
+        self.assertTrue(result["preview"])
+        self.assertEqual((result["value_before"], result["value_after"]), (304, 247))
+        removed = {row["source_activity_id"] for row in result["rows_removed"]}
+        self.assertIn(self.bad.id, removed)
+        self.assertIsInstance(result["rows_removed"][0]["effective_from"], str)  # plain JSON
+        self.assertFalse(ExcludedThresholdCandidate.objects.exists())
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 304)
+
+    def test_exclude_then_list_then_include(self):
+        tools = self._tools()
+
+        result = tools.exclude_threshold_candidate(field="ftp", activity_id=self.bad.id, preview=False)
+
+        self.assertFalse(result["preview"])
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 247)
+        listed = tools.list_threshold_exclusions()["data"]
+        self.assertEqual([(row["field"], row["activity_id"]) for row in listed], [("ftp", self.bad.id)])
+        self.assertEqual(listed[0]["activity_date"], BAD_DAY.isoformat())
+        self.assertEqual(listed[0]["set_by_user_id"], self.athlete.id)
+        self.assertEqual(tools.list_threshold_exclusions(field="critical_run_power")["data"], [])
+
+        preview = tools.include_threshold_candidate(field="ftp", activity_id=self.bad.id)
+        self.assertTrue(preview["preview"])
+        self.assertEqual(preview["value_after"], 304)
+        self.assertTrue(ExcludedThresholdCandidate.objects.exists())
+
+        tools.include_threshold_candidate(field="ftp", activity_id=self.bad.id, preview=False)
+
+        self.assertFalse(ExcludedThresholdCandidate.objects.exists())
+        self.athlete.refresh_from_db()
+        self.assertEqual(self.athlete.ftp, 304)
+
+    def test_rejects_bad_input(self):
+        from rest_framework.exceptions import NotFound, ValidationError
+
+        tools = self._tools()
+        with self.assertRaises(ValidationError):
+            tools.exclude_threshold_candidate(field="weight", activity_id=self.bad.id)
+        with self.assertRaises(ValidationError):  # a ride can't define a run threshold
+            tools.exclude_threshold_candidate(field="threshold_pace", activity_id=self.bad.id)
+        with self.assertRaises(NotFound):
+            tools.exclude_threshold_candidate(field="ftp", activity_id="act_missing")
+        with self.assertRaises(NotFound):  # not excluded, so nothing to include
+            tools.include_threshold_candidate(field="ftp", activity_id=self.bad.id)
+        with self.assertRaises(ValidationError):
+            tools.list_threshold_exclusions(field="weight")
+
+    def test_changing_needs_the_write_scope_even_to_preview(self):
+        from rest_framework.exceptions import PermissionDenied
+
+        tools = self._tools(scope="activities:read")
+        with self.assertRaises(PermissionDenied):
+            tools.exclude_threshold_candidate(field="ftp", activity_id=self.bad.id)
+        with self.assertRaises(PermissionDenied):
+            tools.include_threshold_candidate(field="ftp", activity_id=self.bad.id)
+        self.assertEqual(tools.list_threshold_exclusions()["data"], [])
+
+    def test_listing_needs_the_read_scope(self):
+        from rest_framework.exceptions import PermissionDenied
+
+        with self.assertRaises(PermissionDenied):
+            self._tools(scope="activities:write").list_threshold_exclusions()
+
+
+class ExclusionRecomputeScopeTests(TestCase):
+    """#621 review: the TSS re-rate is the slow step, so a preview skips it (the effect reports
+    only the ledger and live value, which it doesn't touch), and a real change re-rates only the
+    field's sport - nothing else is rated against that field's ledger."""
+
+    def setUp(self):
+        from uploads.processing import recompute_after_duplicate_change
+
+        self.athlete = _athlete("exclude-recompute-scope@example.cc")
+        self.good, self.bad = _good_and_bad(self.athlete)
+        recompute_after_duplicate_change(self.athlete, fields=["ftp"])
+        self.athlete.refresh_from_db()
+
+    def test_a_preview_never_re_rates_tss(self):
+        from unittest import mock
+
+        from . import threshold_exclusions
+
+        with mock.patch("uploads.processing.recompute_tss_for_athlete_from") as rerate:
+            effect = threshold_exclusions.exclude(self.athlete, "ftp", self.bad.id, preview=True)
+
+        rerate.assert_not_called()
+        self.assertEqual((effect.value_before, effect.value_after), (304, 247))
+
+    def test_a_real_exclusion_re_rates_only_the_fields_sport(self):
+        from . import threshold_exclusions
+
+        run = Activity.objects.create(
+            athlete=self.athlete,
+            sport="run",
+            name="Run",
+            start_date=datetime(BAD_DAY.year, BAD_DAY.month, BAD_DAY.day + 1, 7, 0, tzinfo=UTC),
+            moving_time=1200,
+            tss=999,
+        )
+        self.bad.refresh_from_db()
+        bad_tss_before = self.bad.tss
+
+        threshold_exclusions.exclude(self.athlete, "ftp", self.bad.id)
+
+        self.bad.refresh_from_db()
+        run.refresh_from_db()
+        self.assertGreater(self.bad.tss, bad_tss_before)  # now rated against 247 W, not 304 W
+        self.assertEqual(run.tss, 999)  # a run isn't rated against ftp, so it's left alone
