@@ -721,7 +721,7 @@ def _latest_entry(athlete: User, field: str, include_decayed: bool = True) -> Th
     pinned to False for the whole decay glide. Every other caller wants the live value, which is
     genuinely a decayed row mid-glide, and leaves it at the default. Distinct from
     threshold_decay_recompute.latest_non_decayed_row, which takes an exclusive `before` bound for
-    seeding a resimulation and doesn't filter correction-only rows."""
+    seeding a resimulation."""
     qs = (
         ThresholdHistory.objects.filter(athlete=athlete, field=field)
         .exclude(is_correction_only=True)

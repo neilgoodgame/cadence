@@ -356,6 +356,38 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(result.wouldRequalify()).isEmpty();
 	}
 
+	private ThresholdHistory ledgerRow(User athlete, LocalDate effectiveFrom, int value, boolean correctionOnly) {
+		ThresholdHistory row = new ThresholdHistory();
+		row.setAthlete(athlete);
+		row.setField(ThresholdField.FTP);
+		row.setValueNumeric(value);
+		row.setEffectiveFrom(effectiveFrom);
+		row.setCurrentFrom(effectiveFrom);
+		row.setKind(ThresholdHistoryKind.MANUAL);
+		row.setCorrectionOnly(correctionOnly);
+		return thresholdHistoryRepository.save(row);
+	}
+
+	// Issue #607: a correction-only row is only ever a sanity-band reference (#605), so it must
+	// never seed a resimulation's anchor or starting value.
+	@Test
+	void resimulationSeedsFromTheLatestNonCorrectionRow() {
+		User athlete = newDecayAthlete("decay-607-seed@example.cc");
+		LocalDate day0 = LocalDate.of(2026, 1, 1);
+		ledgerRow(athlete, day0, 300, false);
+		ledgerRow(athlete, day0.plusDays(2), 400, true);
+
+		// Past the 10-day window, so it decays - away from 300, never from the 400 correction.
+		LocalDate end = day0.plusDays(15);
+		decayRecomputeService.resimulateSuffix(athlete, ThresholdField.FTP, end, end, null, null, true, false, false);
+
+		List<ThresholdHistory> decayed = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)
+				.stream().filter(e -> e.getKind() == ThresholdHistoryKind.DECAYED).toList();
+		assertThat(decayed).isNotEmpty().allSatisfy(row -> assertThat(row.getValueNumeric()).isLessThan(300));
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isLessThan(300);
+	}
+
 	@Test
 	void rebuildKeepsManualRowsAndRegeneratesMeasuredAndDecayed() {
 		User athlete = newDecayAthlete("decay-rebuild@example.cc");

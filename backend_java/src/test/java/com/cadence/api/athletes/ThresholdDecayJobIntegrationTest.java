@@ -115,6 +115,38 @@ class ThresholdDecayJobIntegrationTest extends IntegrationTest {
 		assertThat(reloaded.getFtp()).isLessThan(260);
 	}
 
+	private ThresholdHistory ledgerRow(User athlete, LocalDate effectiveFrom, int value, boolean correctionOnly) {
+		ThresholdHistory row = new ThresholdHistory();
+		row.setAthlete(athlete);
+		row.setField(ThresholdField.FTP);
+		row.setValueNumeric(value);
+		row.setEffectiveFrom(effectiveFrom);
+		row.setCurrentFrom(effectiveFrom);
+		row.setKind(ThresholdHistoryKind.MANUAL);
+		row.setCorrectionOnly(correctionOnly);
+		return thresholdHistoryRepository.save(row);
+	}
+
+	// Issue #607: the gate uses the same anchor rule as the resimulation's seed, so a recent
+	// correction-only row doesn't hold decay off an otherwise-expired anchor.
+	@Test
+	void aRecentCorrectionDoesNotHoldOffTheDailyJob() {
+		User athlete = newDecayAthlete("decay-607-job@example.cc");
+		LocalDate today = LocalDate.now();
+		ledgerRow(athlete, today.minusDays(30), 300, false);
+		ledgerRow(athlete, today.minusDays(2), 400, true);
+
+		thresholdDecayJob.applyThresholdDecay();
+
+		List<ThresholdHistory> decayed = thresholdHistoryRepository
+				.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseOrderByEffectiveFromAsc(athlete.getId(),
+						ThresholdField.FTP, ThresholdHistoryKind.DECAYED);
+		assertThat(decayed).isNotEmpty();
+		ThresholdHistory latest = decayed.get(decayed.size() - 1);
+		assertThat(latest.getCurrentFrom()).isEqualTo(today);
+		assertThat(latest.getValueNumeric()).isLessThan(300);
+	}
+
 	@Test
 	void skipsADecayDisabledAthleteEvenWithAnExpiredAnchor() {
 		User athlete = new User();

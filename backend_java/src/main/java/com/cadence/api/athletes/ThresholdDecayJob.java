@@ -62,8 +62,11 @@ public class ThresholdDecayJob {
 		for (ThresholdField field : ThresholdField.values()) {
 			try {
 				thresholdHistoryRepository
-						.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
-								athlete.getId(), field, today, ThresholdHistoryKind.DECAYED)
+						// Same anchor rule as ThresholdDecayRecomputeService.seedAnchor: a
+						// correction-only row never counts, so a recent correction doesn't hold
+						// decay off (issue #607).
+						.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndEffectiveFromLessThanOrderByEffectiveFromDescIdDesc(
+								athlete.getId(), field, ThresholdHistoryKind.DECAYED, today)
 						.filter(anchor -> anchor.getEffectiveFrom().isBefore(expiry))
 						// Call the 9-arg overload directly (as rebuildHistoryFrom does): only it is
 						// @Transactional - the 3/4-arg convenience overloads reach it via self-invocation,

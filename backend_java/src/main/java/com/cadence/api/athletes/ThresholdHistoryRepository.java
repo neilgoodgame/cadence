@@ -152,9 +152,9 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 			@Param("athleteId") String athleteId, @Param("field") ThresholdField field, @Param("activityId") String activityId);
 
 	// ThresholdDecayRecomputeService's seed: the ledger's current value as of `before` minus one
-	// day - any kind, including decayed. Tiebroken by id - see the comment on the other
-	// currentFrom lookup above.
-	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+	// day - any kind, including decayed, but not correction-only (issue #607). Tiebroken by id -
+	// see the comment on the other currentFrom lookup above.
+	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
 			String athleteId, ThresholdField field, LocalDate before);
 
 	// ThresholdHistoryCalculator.replayFrom's correction-only sanity-reference seed (issue #494)
@@ -175,20 +175,14 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	List<ThresholdHistory> findByAthleteIdAndFieldAndKindAndCurrentFromGreaterThanEqualOrderByEffectiveFromAsc(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate currentFrom);
 
-	// ThresholdDecayRecomputeService's seed: the latest non-decayed row before `before` - the
-	// anchor simulate() decays away from.
-	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
-			String athleteId, ThresholdField field, LocalDate before, ThresholdHistoryKind kind);
-
-	// isStale/upcomingDrop's "the current one, if non-decayed" lookup (issue #485) - distinct
-	// from the DECAYED-seed-anchor lookup above, which takes an exclusive `before` bound and
-	// doesn't filter correctionOnly.
+	// isStale/upcomingDrop's "the current one, if non-decayed" lookup (issue #485).
 	Optional<ThresholdHistory> findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotOrderByEffectiveFromDescIdDesc(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind);
 
 	// summaryFor's "previous" lookup (issue #485) - same non-decayed exclusion as the method
 	// above, plus bounded to strictly before the current row's own effectiveFrom, so a
-	// daily-shifting decayed row never counts as "previous" either.
+	// daily-shifting decayed row never counts as "previous" either. Also ThresholdDecayRecomputeService's
+	// seed anchor and ThresholdDecayJob's gate (issue #607): the anchor simulate() decays away from.
 	Optional<ThresholdHistory>
 			findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndEffectiveFromLessThanOrderByEffectiveFromDescIdDesc(
 					String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate before);

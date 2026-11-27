@@ -417,6 +417,56 @@ class ApplyThresholdDecayJobTests(TestCase):
         self.assertFalse(ThresholdHistory.objects.filter(athlete=athlete).exists())
 
 
+def _ledger_row(athlete, effective_from, value, *, is_correction_only=False):
+    return ThresholdHistory.objects.create(
+        athlete=athlete,
+        field="ftp",
+        value_numeric=value,
+        effective_from=effective_from,
+        current_from=effective_from,
+        kind="manual",
+        is_correction_only=is_correction_only,
+    )
+
+
+class SeedExcludesCorrectionsTests(TestCase):
+    """Issue #607: a correction-only row is only ever a sanity-band reference (#605), so it must
+    never seed a resimulation's anchor or starting value, nor hold off the daily job."""
+
+    def test_resimulation_seeds_from_the_latest_non_correction_row(self):
+        athlete = _decay_athlete(email="decay-607-seed@example.cc")
+        day0 = date(2026, 1, 1)
+        _ledger_row(athlete, day0, 300)
+        _ledger_row(athlete, day0 + timedelta(days=2), 400, is_correction_only=True)
+
+        # Past the 10-day window, so it decays - away from 300, never from the 400 correction.
+        end = day0 + timedelta(days=15)
+        resimulate_suffix(athlete, "ftp", end, end=end)
+
+        decayed = list(ThresholdHistory.objects.filter(athlete=athlete, field="ftp", kind="decayed"))
+        self.assertTrue(decayed)
+        self.assertTrue(all(row.value_numeric < 300 for row in decayed))
+        athlete.refresh_from_db()
+        self.assertLess(athlete.ftp, 300)
+
+    def test_a_recent_correction_does_not_hold_off_the_daily_job(self):
+        athlete = _decay_athlete(email="decay-607-job@example.cc")
+        today = date.today()
+        _ledger_row(athlete, today - timedelta(days=30), 300)
+        _ledger_row(athlete, today - timedelta(days=2), 400, is_correction_only=True)
+
+        apply_threshold_decay()
+
+        latest = (
+            ThresholdHistory.objects.filter(athlete=athlete, field="ftp", kind="decayed")
+            .order_by("-effective_from")
+            .first()
+        )
+        self.assertIsNotNone(latest)
+        self.assertEqual(latest.current_from, today)
+        self.assertLess(latest.value_numeric, 300)
+
+
 class GatherPreviewStepsTests(TestCase):
     """Issue #487: the read-only half of resimulate_suffix, for preview_threshold_decay."""
 
