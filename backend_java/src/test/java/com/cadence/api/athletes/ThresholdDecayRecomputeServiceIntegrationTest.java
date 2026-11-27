@@ -445,6 +445,56 @@ class ThresholdDecayRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(reloaded.getFtp()).isEqualTo(ftpBefore);
 	}
 
+	// A preview's series ran on silently past existing manual entries: they reset the anchor as
+	// already-recorded rows, so the value changed with no visible row and a 2-year preview looked
+	// like it stopped early. They now appear as kind "manual" rows. Mirrors the Python test.
+	@Test
+	void gatherPreviewStepsOverALongRangeEndingWithManualEntriesCoversUpToTo() {
+		User athlete = newDecayAthlete("decay-preview-manual-rows@example.cc");
+		LocalDate day0 = LocalDate.of(2025, 1, 1);
+		ledgerRow(athlete, day0, 300, false);
+		ledgerRow(athlete, day0.plusDays(690), 260, false);
+		ledgerRow(athlete, day0.plusDays(700), 255, false);
+		int rowsBefore = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP).size();
+		LocalDate end = day0.plusDays(705); // 255 is still inside the 10-day window here
+
+		List<ThresholdDecay.Step> steps = decayRecomputeService
+				.gatherPreviewSteps(athlete, ThresholdField.FTP, day0.plusDays(1), end, null, null, null).steps();
+
+		assertThat(steps).filteredOn(step -> "manual".equals(step.kind()))
+				.extracting(ThresholdDecay.Step::effectiveFrom, step -> (int) Math.round(step.value()))
+				.containsExactly(org.assertj.core.groups.Tuple.tuple(day0.plusDays(690), 260),
+						org.assertj.core.groups.Tuple.tuple(day0.plusDays(700), 255));
+		ThresholdDecay.Step last = steps.get(steps.size() - 1);
+		assertThat(last.kind()).isEqualTo("manual");
+		assertThat(Math.round(last.value())).isEqualTo(255);
+		assertThat(thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize(rowsBefore);
+	}
+
+	// Documents the boundary behaviour: simulate() is causal, so a preview's first part is
+	// identical to the matching part of a longer preview. The second part of a split starts from
+	// the real ledger instead of the first part's simulated value, so it may differ.
+	@Test
+	void gatherPreviewStepsSplitRunMatchesTheContinuousOneUpToTheSplit() {
+		User athlete = newDecayAthlete("decay-preview-split@example.cc");
+		LocalDate day0 = LocalDate.of(2025, 1, 1);
+		ledgerRow(athlete, day0, 300, false);
+		ledgerRow(athlete, day0.plusDays(200), 280, false);
+		LocalDate start = day0.plusDays(1);
+		LocalDate split = day0.plusDays(120);
+		LocalDate end = day0.plusDays(365);
+
+		List<ThresholdDecay.Step> continuous = decayRecomputeService
+				.gatherPreviewSteps(athlete, ThresholdField.FTP, start, end, null, null, null).steps();
+		List<ThresholdDecay.Step> firstHalf = decayRecomputeService
+				.gatherPreviewSteps(athlete, ThresholdField.FTP, start, split, null, null, null).steps();
+
+		assertThat(firstHalf).hasSizeGreaterThan(1);
+		assertThat(firstHalf).isEqualTo(continuous.stream().filter(step -> !step.currentFrom().isAfter(split)).toList());
+	}
+
 	@Test
 	void gatherPreviewStepsDefaultsToTheAthletesOwnSettingsWhenNothingIsOverridden() {
 		User athlete = newDecayAthlete("preview-defaults@example.cc");

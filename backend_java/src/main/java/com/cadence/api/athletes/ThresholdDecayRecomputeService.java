@@ -154,12 +154,12 @@ public class ThresholdDecayRecomputeService {
 	/** Every surviving (not correction-only) manual row in [fromDate, end], marked
 	 * alreadyRecorded=true so simulate() respects its anchor-reset effect without duplicating it
 	 * - plus the one brand-new entry a manual-edit trigger is itself recording, if any. */
-	private List<ThresholdDecay.ManualEntry> gatherManualEntries(
-			User athlete, ThresholdField field, LocalDate fromDate, LocalDate end, ThresholdDecay.ManualEntry newEntry) {
+	private List<ThresholdDecay.ManualEntry> gatherManualEntries(User athlete, ThresholdField field,
+			LocalDate fromDate, LocalDate end, ThresholdDecay.ManualEntry newEntry, boolean alreadyRecorded) {
 		List<ThresholdDecay.ManualEntry> entries = new ArrayList<>();
 		for (ThresholdHistory row : thresholdHistoryRepository.findByAthleteIdAndFieldAndKindAndCorrectionOnlyFalseAndEffectiveFromBetween(
 				athlete.getId(), field, ThresholdHistoryKind.MANUAL, fromDate, end)) {
-			entries.add(new ThresholdDecay.ManualEntry(row.getEffectiveFrom(), rowValue(field, row), null, true));
+			entries.add(new ThresholdDecay.ManualEntry(row.getEffectiveFrom(), rowValue(field, row), null, alreadyRecorded));
 		}
 		if (newEntry != null) {
 			entries.add(newEntry);
@@ -186,11 +186,22 @@ public class ThresholdDecayRecomputeService {
 	 * disagree about what a resimulation would produce. */
 	private List<ThresholdDecay.Step> simulateSuffix(User athlete, ThresholdField field, LocalDate fromDate, LocalDate end,
 			ThresholdDecay.DecaySettings settings, ThresholdDecay.ManualEntry newManualEntry) {
+		return simulateSuffix(athlete, field, fromDate, end, settings, newManualEntry, false);
+	}
+
+	/** {@code emitExistingManual}: existing manual rows normally go in as alreadyRecorded, so
+	 * simulate() resets the anchor without emitting a Step for a row the ledger already has
+	 * (resimulateSuffix keeps them). A preview writes nothing, so it emits them instead -
+	 * otherwise a manual entry would change the value with no visible row, and the series would
+	 * look like it stopped early. */
+	private List<ThresholdDecay.Step> simulateSuffix(User athlete, ThresholdField field, LocalDate fromDate, LocalDate end,
+			ThresholdDecay.DecaySettings settings, ThresholdDecay.ManualEntry newManualEntry, boolean emitExistingManual) {
 		Double seedV = seedV(athlete, field, fromDate);
 		SeedAnchor anchor = seedAnchor(athlete, field, fromDate);
 
 		List<ThresholdDecay.DecayCandidate> candidates = gatherCandidates(athlete, field, fromDate, end);
-		List<ThresholdDecay.ManualEntry> manualEntries = gatherManualEntries(athlete, field, fromDate, end, newManualEntry);
+		List<ThresholdDecay.ManualEntry> manualEntries =
+				gatherManualEntries(athlete, field, fromDate, end, newManualEntry, !emitExistingManual);
 		List<ThresholdDecay.ManualEntry> corrections = gatherCorrections(athlete, field, end);
 
 		Map<LocalDate, Double> loadByDay = anchor.value() != null
@@ -396,7 +407,7 @@ public class ThresholdDecayRecomputeService {
 		ThresholdDecay.DecaySettings settings = new ThresholdDecay.DecaySettings(base.windowDays(), base.sanityPct(),
 				tauDays != null ? tauDays : base.tauDays(), minPct != null ? minPct : base.minPct(),
 				maxPct != null ? maxPct : base.maxPct(), true);
-		return new PreviewResult(simulateSuffix(athlete, field, fromDate, end, settings, null), settings);
+		return new PreviewResult(simulateSuffix(athlete, field, fromDate, end, settings, null, true), settings);
 	}
 
 	/** issue #485: anchorValue/anchorEffectiveFrom/decayingSince/target for a currently-decaying
