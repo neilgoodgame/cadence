@@ -102,10 +102,12 @@ public class ThresholdDecayRecomputeService {
 	}
 
 	/** The ledger's current value as of {@code fromDate} minus one day - any kind, including
-	 * decayed. */
+	 * decayed, but never a correction-only row: since #605 a correction is only ever a sanity-band
+	 * reference, never the value (issue #607). */
 	private Double seedV(User athlete, ThresholdField field, LocalDate fromDate) {
 		return thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(athlete.getId(), field, fromDate)
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndCurrentFromLessThanOrderByCurrentFromDescIdDesc(
+						athlete.getId(), field, fromDate)
 				.map(row -> rowValue(field, row))
 				.orElse(null);
 	}
@@ -113,12 +115,12 @@ public class ThresholdDecayRecomputeService {
 	private record SeedAnchor(Double value, LocalDate date, ThresholdHistoryKind kind) {
 	}
 
-	/** The latest non-decayed row before {@code fromDate} - the anchor simulate() decays away
-	 * from. */
+	/** The latest non-decayed, non-correction row before {@code fromDate} - the anchor simulate()
+	 * decays away from. A correction-only row is never an anchor (issue #607). */
 	private SeedAnchor seedAnchor(User athlete, ThresholdField field, LocalDate fromDate) {
 		return thresholdHistoryRepository
-				.findFirstByAthleteIdAndFieldAndEffectiveFromLessThanAndKindNotOrderByEffectiveFromDescIdDesc(
-						athlete.getId(), field, fromDate, ThresholdHistoryKind.DECAYED)
+				.findFirstByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndEffectiveFromLessThanOrderByEffectiveFromDescIdDesc(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED, fromDate)
 				.map(row -> new SeedAnchor(rowValue(field, row), row.getEffectiveFrom(), row.getKind()))
 				.orElse(new SeedAnchor(null, null, null));
 	}

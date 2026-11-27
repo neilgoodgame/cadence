@@ -58,9 +58,13 @@ def _decay_settings_for(athlete: User) -> DecaySettings:
 
 
 def _seed_v(athlete: User, field: str, from_date: date) -> float | None:
-    """The ledger's current value as of `from_date - 1` - any kind, including decayed."""
+    """The ledger's current value as of `from_date - 1` - any kind, including decayed, but never
+    a correction-only row: since #605 a correction is only ever a sanity-band reference, never the
+    value (issue #607)."""
     row = (
-        ThresholdHistory.objects.filter(athlete=athlete, field=field, current_from__lt=from_date)
+        ThresholdHistory.objects.filter(
+            athlete=athlete, field=field, is_correction_only=False, current_from__lt=from_date
+        )
         .order_by("-current_from", "-id")
         .first()
     )
@@ -68,12 +72,16 @@ def _seed_v(athlete: User, field: str, from_date: date) -> float | None:
 
 
 def latest_non_decayed_row(athlete: User, field: str, before: date) -> ThresholdHistory | None:
-    """The latest non-decayed (measured or manual) row for (athlete, field) with effective_from <
-    `before` - the anchor a suffix resimulation decays away from. Shared by _seed_anchor and
-    athletes.tasks.apply_threshold_decay's daily-job gate so the anchor-selection rule lives in one
-    place (issue #548 review)."""
+    """The latest non-decayed, non-correction (measured or manual) row for (athlete, field) with
+    effective_from < `before` - the anchor a suffix resimulation decays away from. A correction-only
+    row is never an anchor (issue #607): since #605 it's only a sanity-band reference. Shared by
+    _seed_anchor and athletes.tasks.apply_threshold_decay's daily-job gate so the anchor-selection
+    rule lives in one place (issue #548 review) - a recent correction therefore doesn't hold the
+    daily job off either."""
     return (
-        ThresholdHistory.objects.filter(athlete=athlete, field=field, effective_from__lt=before)
+        ThresholdHistory.objects.filter(
+            athlete=athlete, field=field, is_correction_only=False, effective_from__lt=before
+        )
         .exclude(kind="decayed")
         .order_by("-effective_from", "-id")
         .first()
