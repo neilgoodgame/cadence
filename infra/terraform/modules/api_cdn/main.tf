@@ -28,6 +28,11 @@ resource "aws_cloudfront_distribution" "this" {
       https_port             = 443
       origin_protocol_policy = "http-only" # CloudFront terminates client TLS; the origin's own SG only accepts traffic from CloudFront's IPs - see modules/ec2's security group.
       origin_ssl_protocols   = ["TLSv1.2"]
+      # Default is 30s. preview_threshold_decay over a long range (e.g. 24 months of FTP) takes
+      # about 45-50s on staging, and CloudFront cut it off with a 5xx at 30s. 120 is this
+      # account's "Response timeout per origin" quota (checked via Service Quotas), so it's the
+      # most headroom available without a quota increase.
+      origin_read_timeout = 120
     }
   }
 
