@@ -249,6 +249,25 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isEqualTo(280);
 	}
 
+	// #610 review: a correction-only row is never the live value with decay on - including one
+	// the #608 bug itself saved correction-only, which mustn't keep blocking later edits.
+	@Test
+	void backdatedEditDuringDecayIsNotBlockedByALaterCorrectionOnlyRow() {
+		User athlete = newDecayAthlete608("decay-608-correction@example.cc", true);
+		LocalDate today = LocalDate.now();
+		newEntry(athlete, ThresholdField.FTP, 300, today.minusDays(20), ThresholdHistoryKind.MANUAL);
+		ThresholdHistory correction = newEntry(athlete, ThresholdField.FTP, 290, today.minusDays(1), ThresholdHistoryKind.MANUAL);
+		correction.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(correction);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 280, null, athlete, today.minusDays(3), true, false);
+
+		assertThat(result.becameCurrent()).isTrue();
+		assertThat(result.isCorrectionOnly()).isFalse();
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isEqualTo(280);
+	}
+
 	@Test
 	void backdatedEditDuringDecayIsStillCorrectionOnlyBehindALaterNonDecayedRow() {
 		User athlete = newDecayAthlete608("decay-608-manual@example.cc", true);

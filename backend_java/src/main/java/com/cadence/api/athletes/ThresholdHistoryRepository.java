@@ -56,8 +56,9 @@ public interface ThresholdHistoryRepository extends JpaRepository<ThresholdHisto
 	boolean existsByAthleteIdAndFieldAndEffectiveFromGreaterThan(String athleteId, ThresholdField field, LocalDate effectiveFrom);
 
 	// The same check for a decay-enabled athlete (issue #608): decayed rows don't count, since the
-	// became-current resimulation regenerates every one after the edit's date anyway.
-	boolean existsByAthleteIdAndFieldAndKindNotAndEffectiveFromGreaterThan(
+	// became-current resimulation regenerates every one after the edit's date anyway, and nor do
+	// correction-only rows, which are never the live value with decay on (#605).
+	boolean existsByAthleteIdAndFieldAndCorrectionOnlyFalseAndKindNotAndEffectiveFromGreaterThan(
 			String athleteId, ThresholdField field, ThresholdHistoryKind kind, LocalDate effectiveFrom);
 
 	// ThresholdHistoryCalculator.replayFullHistory's manual-row merge (issue #504) - every

@@ -924,7 +924,8 @@ def record_manual_value(
     `effective_from` (issue #493) lets the edit be backdated instead of always applying from
     today. The row is always written - it's a legitimate historical correction either way - but
     it only becomes the live/current value (`became_current`) when BOTH (a) no existing row has
-    a later effective_from (ignoring decayed rows for a decay-enabled athlete - issue #608), and
+    a later effective_from (ignoring decayed and correction-only rows for a decay-enabled
+    athlete - issue #608), and
     (b) it isn't already outside threshold_window_days as of today
     (i.e. it wouldn't be stale the moment it's saved). Otherwise it's `is_correction_only`: still
     used by any activity-scoped lookup (zones.py::reference_for, filtered on current_from), just
@@ -968,11 +969,13 @@ def record_manual_value(
     later_rows = ThresholdHistory.objects.filter(athlete=athlete, field=field, effective_from__gt=given_date)
     if athlete.threshold_decay_enabled:
         # Issue #608: a decay-on ledger gets a decayed row nearly every day of a glide, and the
-        # became-current resimulation below regenerates every one after given_date anyway - so
-        # only a later manual, measured or correction-only row means this edit isn't the latest.
-        # Decay-off keeps counting them: nothing would regenerate a leftover decayed row from a
-        # since-disabled period, so it really would still outrank this edit.
-        later_rows = later_rows.exclude(kind="decayed")
+        # became-current resimulation below regenerates every one after given_date anyway. A
+        # correction-only row is never the live value for a decay-on athlete either (#605, only a
+        # sanity reference) - and one saved correction-only by the #608 bug itself mustn't keep
+        # blocking later edits. So only a later manual or measured row means this edit isn't the
+        # latest. Decay-off keeps counting both: nothing would regenerate a leftover decayed row
+        # from a since-disabled period, so it really would still outrank this edit.
+        later_rows = later_rows.exclude(kind="decayed").exclude(is_correction_only=True)
     has_later_row = later_rows.exists()
     stale_on_arrival = (today - given_date).days > athlete.threshold_window_days
     is_correction_only = has_later_row or stale_on_arrival

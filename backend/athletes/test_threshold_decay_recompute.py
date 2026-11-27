@@ -375,6 +375,29 @@ class BackdatedEditDuringDecayTests(TestCase):
         athlete.refresh_from_db()
         self.assertEqual(athlete.ftp, 280)
 
+    def test_a_later_correction_only_row_does_not_block_it(self):
+        """#610 review: a correction-only row is never the live value with decay on - including
+        one the #608 bug itself saved correction-only, which mustn't keep blocking later edits."""
+        athlete = _decay_athlete(email="decay-608-correction@example.cc")
+        as_of = date(2026, 3, 1)
+        self._row(athlete, as_of - timedelta(days=20), 300, "manual")
+        ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=290,
+            effective_from=as_of - timedelta(days=1),
+            current_from=as_of - timedelta(days=1),
+            kind="manual",
+            is_correction_only=True,
+        )
+
+        result = record_manual_value(athlete, "ftp", 280, effective_from=as_of - timedelta(days=3), as_of=as_of)
+
+        self.assertTrue(result.became_current)
+        self.assertFalse(result.is_correction_only)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, 280)
+
     def test_a_later_non_decayed_row_still_makes_it_correction_only(self):
         athlete = _decay_athlete(email="decay-608-manual@example.cc")
         as_of = date(2026, 3, 1)
