@@ -34,7 +34,7 @@ below as "the doc", with its section numbers). The parity rule in the root
 | Decay model | As proposed, but evaluated as a **daily recurrence** towards a moving target rather than a closed form anchored to `ftp_last`, and **never easing upwards**. Amplitude has a **minimum** (`A_min` 3%), so an unverified value always drifts a little, even with load maintained (see 2.2) |
 | "Current best" | Comes from the **ledger** (latest measured or manual row, the "anchor"), not the window scan. The window scan can't see manual rows |
 | Load term | Per-sport 42-day EWMA of **intensity-filtered load**: TSS-rate summed over only the 30 s-smoothed samples above Z2 (≥ 75% of the anchor value). The cutoff is fixed at the anchor, so it isn't circular. Read from a new per-activity **intensity histogram**, so no record streams are re-read each day (see 2.3) |
-| Calibration | Run on the brief's athlete's real rides (section 13): decaying from 260 W at expiry on 19 Aug would give **≈ 248 W today**, with the above-Z2 ratio at 0.80. Their HR-capped "Z2" rides at ~205 W sit above the 195 W cutoff, so they still count. Their current manual 255 W holds until 22 Feb 2027, then settles at 243–248 W if training continues as now |
+| Calibration | Run on the brief's athlete's real rides (section 13): decaying from a 260 W anchor would give **≈ 248 W** 75 days after expiry, with the above-Z2 ratio at 0.80. Their HR-capped "Z2" rides at ~205 W sit above the 195 W cutoff, so they still count. Their later manual 255 W holds until its own expiry, then settles at 243–248 W if training continues as before |
 | Pace | Decay arithmetic in effort space (speed = 1/pace), so decay always makes pace **slower** (see 2.4) |
 | Trigger | **Daily scheduled job** plus the existing ingest and refresh hooks. Not compute-on-read (see 4.4) |
 | Day-to-day vs rebuild | One pure **simulation** function used for both, so a rebuild reproduces day-to-day behaviour by construction (see 3, 4.2) |
@@ -845,12 +845,12 @@ Two fixtures.
 - the 3 h, 185 W NP ride rated 28 days after expiry has IF ≈ 0.75 and
   TSS ≈ 186, not 0.80 / 211.
 
-**Real-data-shaped.** Section 13's rides, from 1 Dec 2025 to 1 Nov 2026, with
-the 260 W anchor on 28 Apr and the successor at 232 W. Assert:
+**Real-data-shaped.** Section 13's rides (about 11 months), with the 260 W
+anchor and the successor at 232 W. Assert:
 
-- the expiry is 19 Aug,
-- FTP is 255 / 252 / 250 W on 2 Sep / 16 Sep / 14 Oct, and 248 W on 2 Nov,
-- the 1 Nov ride rates at about IF 0.75 / TSS 184.
+- the expiry is 113 days after the anchor,
+- FTP is 255 / 252 / 250 W at expiry + 14 / 28 / 56 days, and 248 W at expiry + 75,
+- the last ride in the data (expiry + 74) rates at about IF 0.75 / TSS 184.
 
 These numbers come from the section 13 model; regenerate them from real
 histograms once the feature exists.
@@ -899,7 +899,7 @@ What this means for the brief's 3 h endurance ride (NP 185 W, 3.31 h):
 | As it happened, rated against 232 W | 0.80 | 211 |
 | Maintained, rated at day 28 (255 W) | 0.73 | 174 |
 | Halved, rated at day 28 (247 W) | 0.75 | 186 |
-| Real rides, rated on 1 Nov (≈ 248 W) | 0.75 | 184 |
+| Real rides, rated at expiry + 74 days (≈ 248 W) | 0.75 | 184 |
 
 ---
 
@@ -966,7 +966,7 @@ Each PR is a parity pair: both backends together.
    other (section 13). *Recommendation:* ship the hard cutoff as agreed. The
    histogram means switching later needs no reprocessing.
 10. **Check before calibrating: the 20-minute window doesn't match the
-    duration curve.** The 28 Apr ride's duration-curve 20-minute best is
+    duration curve.** The anchor ride's duration-curve 20-minute best is
     268.3 W, which implies 255 W, but the ledger recorded 260 W (that's
     273.7 W × 0.95). The successor shows the same ~2% gap: no ride's curve
     implies 232 W. The threshold calculation's sample-count window and the
@@ -974,7 +974,7 @@ Each PR is a parity pair: both backends together.
     in the record stream are the likely cause). This doesn't change the decay
     design, but it means the anchor itself may be about 2% high. Worth its own
     small investigation.
-11. **Stored IF isn't always consistent with the ledger.** The 23 Oct ride's
+11. **Stored IF isn't always consistent with the ledger.** One steady ride's
     stored IF of 0.799 with 205 W average power needs an FTP of about 257 W or
     more, but the ledger said 232 W on that date. So some activities were rated
     against a different value than `reference_for` would give now. 4.6's
@@ -987,26 +987,26 @@ Each PR is a parity pair: both backends together.
 
 This section runs the proposed model (2.2 and 2.3; `min_pct` 3%, `max_pct` 12%,
 τ 25, cutoff 0.75 × anchor) on the athlete's real bike history, read through
-the Cadence MCP: every ride from 1 Dec 2025 to 1 Nov 2026, duplicate
-recordings removed.
+the Cadence MCP: every ride over about 11 months, duplicate recordings removed.
+Dates below are counted in days from the anchor or its expiry.
 
 ### Inputs
 
 | Input | Value | How it was established |
 |---|---|---|
-| Anchor | 260 W, 28 Apr 2026 | The ledger's previous value was 232 W, so 260 W came before it. Stored IFs bracket the drop: the 7 Aug SST ride (avg 211 W, IF 0.863) is only consistent with 260 W, and the 20 Aug ride (IF 1.004, 60 min best 228.5 W) only with 232 W. The drop therefore fell between 17 and 20 Aug, which puts the source 113 days earlier, on 28 Apr. That ride's duration-curve 20 min best is 268.3 W (see Q10) |
-| Expiry | 19 Aug 2026 | |
+| Anchor | 260 W | The ledger's previous value was 232 W, so 260 W came before it. Stored IFs bracket the drop: a sweet-spot ride 12 days before the drop (avg 211 W, IF 0.863) is only consistent with 260 W, and a ride the day after it (IF 1.004, 60 min best 228.5 W) only with 232 W. The drop therefore fell within a 3-day span, which puts the source 113 days earlier. That ride's duration-curve 20 min best is 268.3 W (see Q10) |
+| Expiry | Anchor + 113 days | |
 | Successor | 232 W | The value the ledger dropped to, unchanged until the manual edit |
-| Current value | 255 W manual, 1 Nov 2026 | `get_athlete_thresholds` |
-| Ride intensity distribution | Approximated from real templates | The MCP doesn't expose per-second power. Each steady ride uses the 23 Oct "Zone 2 Workout 90" 15 s stream, shifted to that ride's average power. Each interval ride (Gorby, threshold, SST, over/unders, tempo, climbs, the test) uses the 24 Sep Gorby stream, scaled to its average. Both are smoothed to 30 s |
+| Current value | 255 W manual, set at expiry + 74 days | `get_athlete_thresholds` |
+| Ride intensity distribution | Approximated from real templates | The MCP doesn't expose per-second power. Each steady ride uses one real steady Z2 ride's 15 s stream, shifted to that ride's average power. Each interval ride (threshold, sweet-spot, over/unders, tempo, climbs, the test) uses one real interval session's stream, scaled to its average. Both are smoothed to 30 s |
 
 A normal approximation fitted from stored IF was tried first and dropped: some
 stored IFs aren't consistent with the ledger (Q11), and interval sessions are
 bimodal (~295 W work, ~150 W recovery), which a normal curve can't represent.
 
-### What decay would have done since 19 Aug
+### What decay would have done after expiry
 
-| Load definition | Ratio on 2 Nov | Target | 2 Sep | 16 Sep | 14 Oct | 2 Nov |
+| Load definition | Ratio at expiry + 75 | Target | Expiry + 14 | + 28 | + 56 | + 75 |
 |---|---|---|---|---|---|---|
 | **Above-Z2, hard cutoff at 75%** (as agreed) | 0.80 | 248 | 255 | 252 | 250 | **248** |
 | Above-Z2, hard cutoff at 80% | 0.69 | 245 | 254 | 251 | 248 | 246 |
@@ -1016,35 +1016,35 @@ bimodal (~295 W work, ~150 W recovery), which a normal curve can't represent.
 ### Findings
 
 - **Plain TSS load went *up* during the "Z2 block".** It rose from 31.5 at the
-  anchor to 33.6 on 1 Nov, so on plain load, training looks fully maintained.
+  anchor to 33.6 at the end of the data, so on plain load, training looks fully maintained.
   This confirms the agreed concern: volume masks the loss of intensity.
 - **The filter moves the ratio, but only to 0.80, because the "Z2" isn't
-  power-Z2.** The HR-capped rides (≤ 125 bpm) average 183–215 W against a
+  power-Z2.** The HR-capped rides average 183–215 W against a
   cutoff of 195 W, so most of the 205 W rides still count as tempo. Only the
-  ~182–186 W rides, and the 1 Nov Watopia ride, fall mostly below the cutoff.
-- **The result lands where the athlete estimated.** A modelled 248 W today
+  ~182–186 W rides, and one virtual ride, fall mostly below the cutoff.
+- **The result lands where the athlete estimated.** A modelled 248 W at the end of the data
   sits a few watts under the athlete's own 255 W estimate, and well above the
-  232 W cliff. TSS for the 1 Nov ride would have been about 184, not 211.
+  232 W cliff. TSS for the last ride would have been about 184, not 211.
 - **The cutoff choice matters less than feared.** Moving it from 75% to 80%
   shifts today's value by 2 W, and the smooth ramp by 1 W.
 
-### Projection for the current 255 W (manual, 1 Nov)
+### Projection for the later manual 255 W
 
 Under the new rules, the manual value is the anchor. Lower rides can't replace
-it before it expires, which fixes 1.1. Expiry is 22 Feb 2027; after that it
-decays against the above-Z2 load measured relative to 1 Nov, with `R` = 255 W
+it before it expires, which fixes 1.1. It expires 113 days after it was set; after
+that it decays against the above-Z2 load measured relative to its own date, with `R` = 255 W
 and a cutoff of 191 W.
 
-| Bike training from now on | Ratio | Target | 22 Mar 2027 | 19 Apr | 23 May |
+| Bike training from then on | Ratio | Target | Expiry + 28 | + 56 | + 90 |
 |---|---|---|---|---|---|
-| Same mix as the six weeks to 1 Nov | ≈ 1.0 | 247 | 250 | 248 | 248 |
+| Same mix as the six weeks before the edit | ≈ 1.0 | 247 | 250 | 248 | 248 |
 | Less tempo / sweet spot, like the drop seen since April | ≈ 0.8 | 243 | 247 | 244 | 243 |
 | Half the above-Z2 riding | 0.5 | 236 | 242 | 238 | 236 |
 | No riding above Z2, or no bike | 0 | 224 | 234 | 228 | 225 |
 
 Any ride with an implied FTP of at least the current value before then resets
 the anchor (an upward reset), as does a new manual entry after a test. Without
-that, the value is flagged "Modelled · test due" from 22 Feb onwards.
+that, the value is flagged "Modelled · test due" from its expiry onwards.
 
 ### Caveats
 
