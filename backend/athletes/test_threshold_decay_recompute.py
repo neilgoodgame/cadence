@@ -333,6 +333,72 @@ class RecordManualValueWiringTests(TestCase):
         self.assertIsNone(athlete.ftp)
 
 
+class BackdatedEditDuringDecayTests(TestCase):
+    """Issue #608: a decay-on ledger has a decayed row nearly every day of a glide, which used to
+    make almost every backdated edit correction-only."""
+
+    def _row(self, athlete, effective_from, value, kind):
+        return ThresholdHistory.objects.create(
+            athlete=athlete,
+            field="ftp",
+            value_numeric=value,
+            effective_from=effective_from,
+            current_from=effective_from,
+            kind=kind,
+        )
+
+    def test_backdated_edit_inside_the_window_becomes_current_despite_later_decayed_rows(self):
+        athlete = _decay_athlete(email="decay-608-on@example.cc")
+        as_of = date(2026, 3, 1)
+        self._row(athlete, as_of - timedelta(days=20), 300, "manual")
+        resimulate_suffix(athlete, "ftp", as_of - timedelta(days=20), end=as_of)
+        edit_date = as_of - timedelta(days=3)
+        self.assertTrue(
+            ThresholdHistory.objects.filter(
+                athlete=athlete, field="ftp", kind="decayed", effective_from__gt=edit_date
+            ).exists()
+        )
+
+        result = record_manual_value(athlete, "ftp", 280, effective_from=edit_date, as_of=as_of)
+
+        self.assertTrue(result.became_current)
+        self.assertFalse(result.is_correction_only)
+        row = ThresholdHistory.objects.get(athlete=athlete, field="ftp", kind="manual", effective_from=edit_date)
+        self.assertEqual(row.value_numeric, 280)
+        self.assertFalse(row.is_correction_only)
+        # The resimulation from the edit's date replaced the old glide's later decayed rows.
+        self.assertFalse(
+            ThresholdHistory.objects.filter(
+                athlete=athlete, field="ftp", kind="decayed", effective_from__gt=edit_date
+            ).exists()
+        )
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.ftp, 280)
+
+    def test_a_later_non_decayed_row_still_makes_it_correction_only(self):
+        athlete = _decay_athlete(email="decay-608-manual@example.cc")
+        as_of = date(2026, 3, 1)
+        self._row(athlete, as_of - timedelta(days=1), 300, "manual")
+
+        result = record_manual_value(athlete, "ftp", 280, effective_from=as_of - timedelta(days=3), as_of=as_of)
+
+        self.assertTrue(result.is_correction_only)
+        self.assertFalse(result.became_current)
+
+    def test_decay_off_still_counts_a_leftover_decayed_row(self):
+        """Nothing regenerates a decayed row left over from a since-disabled decay period, so it
+        really does still outrank the backdated edit."""
+        athlete = _decay_athlete(email="decay-608-off@example.cc", threshold_decay_enabled=False)
+        as_of = date(2026, 3, 1)
+        self._row(athlete, as_of - timedelta(days=8), 300, "manual")
+        self._row(athlete, as_of - timedelta(days=1), 290, "decayed")
+
+        result = record_manual_value(athlete, "ftp", 280, effective_from=as_of - timedelta(days=3), as_of=as_of)
+
+        self.assertTrue(result.is_correction_only)
+        self.assertFalse(result.became_current)
+
+
 class RebuildWiringTests(TestCase):
     def test_rebuild_keeps_manual_rows_and_regenerates_measured_and_decayed(self):
         athlete = _decay_athlete()

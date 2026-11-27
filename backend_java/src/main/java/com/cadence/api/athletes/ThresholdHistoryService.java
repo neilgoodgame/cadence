@@ -186,8 +186,9 @@ public class ThresholdHistoryService {
 	 * <p><code>effectiveFrom</code> (issue #493, null = today) lets the edit be backdated instead
 	 * of always applying from today. The row is always written - it's a legitimate historical
 	 * correction either way - but it only becomes the live/current value ({@code becameCurrent})
-	 * when BOTH (a) no existing row has a later effectiveFrom, and (b) it isn't already outside
-	 * thresholdWindowDays as of today (i.e. it wouldn't be stale the moment it's saved).
+	 * when BOTH (a) no existing row has a later effectiveFrom (ignoring decayed rows for a
+	 * decay-enabled athlete - issue #608), and (b) it isn't already outside thresholdWindowDays as
+	 * of today (i.e. it wouldn't be stale the moment it's saved).
 	 * Otherwise it's {@code correctionOnly}: still used by any activity-scoped lookup
 	 * (ZoneService.referenceFor, filtered on currentFrom), just excluded from every "what's
 	 * current" lookup. Throws ValidationException for a future date or a date before the
@@ -232,8 +233,15 @@ public class ThresholdHistoryService {
 			return new ManualEditResult(false, false, false);
 		}
 
-		boolean hasLaterRow =
-				thresholdHistoryRepository.existsByAthleteIdAndFieldAndEffectiveFromGreaterThan(athlete.getId(), field, givenDate);
+		// Issue #608: a decay-on ledger gets a decayed row nearly every day of a glide, and the
+		// became-current resimulation below regenerates every one after givenDate anyway - so only
+		// a later manual, measured or correction-only row means this edit isn't the latest.
+		// Decay-off keeps counting them: nothing would regenerate a leftover decayed row from a
+		// since-disabled period, so it really would still outrank this edit.
+		boolean hasLaterRow = athlete.isThresholdDecayEnabled()
+				? thresholdHistoryRepository.existsByAthleteIdAndFieldAndKindNotAndEffectiveFromGreaterThan(
+						athlete.getId(), field, ThresholdHistoryKind.DECAYED, givenDate)
+				: thresholdHistoryRepository.existsByAthleteIdAndFieldAndEffectiveFromGreaterThan(athlete.getId(), field, givenDate);
 		boolean staleOnArrival = ChronoUnit.DAYS.between(givenDate, today) > athlete.getThresholdWindowDays();
 		boolean correctionOnly = hasLaterRow || staleOnArrival;
 		boolean becameCurrent = !correctionOnly;
