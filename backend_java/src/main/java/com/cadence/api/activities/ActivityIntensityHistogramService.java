@@ -89,7 +89,29 @@ public class ActivityIntensityHistogramService {
 				powerSeries = Collections.nCopies(powerSeries.size(), null);
 			}
 			List<Integer> hrSeries = rows.stream().map(RecordRepository.PowerHeartrate::getHeartrate).toList();
-			return rebuildHistogram(activity, powerSeries, hrSeries);
+			// Insert-if-absent rather than rebuildHistogram's save(): two requests can both miss
+			// the findById above and build the same activity's histogram concurrently. Whichever
+			// inserts first wins, and both then read that row back.
+			HistogramPair histograms = buildHistogram(powerSeries, hrSeries);
+			histogramRepository.insertIfAbsent(activity.getId(), toJson(histograms.power30s()),
+					toJson(histograms.heartrate()));
+			return histogramRepository.findById(activity.getId()).orElseThrow();
 		});
+	}
+
+	/** {"watts": seconds, ...} for the jsonb columns - the same shape Hibernate writes for these
+	 * Map<Integer, Integer> fields. */
+	static String toJson(Map<Integer, Integer> histogram) {
+		if (histogram == null) {
+			return null;
+		}
+		StringBuilder json = new StringBuilder("{");
+		histogram.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> {
+			if (json.length() > 1) {
+				json.append(',');
+			}
+			json.append('"').append(e.getKey()).append("\":").append(e.getValue());
+		});
+		return json.append('}').toString();
 	}
 }

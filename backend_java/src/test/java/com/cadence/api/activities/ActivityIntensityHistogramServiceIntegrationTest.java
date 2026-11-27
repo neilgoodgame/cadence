@@ -18,6 +18,8 @@ import java.time.ZoneOffset;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** The DB-touching half of ActivityIntensityHistogramService (rebuild/ensure, the lazy-backfill
  * path's own gating, cascade delete) and hook point #2 (DerivedStatsRecomputeService, the
@@ -38,6 +40,8 @@ class ActivityIntensityHistogramServiceIntegrationTest extends IntegrationTest {
 	private ActivityIntensityHistogramRepository histogramRepository;
 	@Autowired
 	private ActivityIntensityHistogramService histogramService;
+	@Autowired
+	private PlatformTransactionManager transactionManager;
 	@Autowired
 	private DerivedStatsRecomputeService derivedStatsRecomputeService;
 	@Autowired
@@ -99,6 +103,47 @@ class ActivityIntensityHistogramServiceIntegrationTest extends IntegrationTest {
 		assertThat(histogram.getPower30s().values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(45 - 30 + 1);
 		assertThat(histogram.getHeartrate()).containsExactly(java.util.Map.entry(155, 45));
 		assertThat(histogramRepository.findById(activity.getId())).isPresent();
+	}
+
+	// Overlapping preview_threshold_decay calls on staging both missed the row and both inserted
+	// it, failing one with a duplicate key on activity_intensity_histogram_pkey. Reproduced
+	// deterministically: transaction A has inserted the row but not committed when
+	// ensureHistogram misses it and tries to insert; once A commits, ensureHistogram must return
+	// A's row instead of failing.
+	@Test
+	void ensureHistogramReturnsTheOtherWritersRowWhenItLosesTheInsertRace() throws Exception {
+		User athlete = newAthlete("histogram-race@example.cc");
+		Activity activity = activityWithRecords(athlete, Sport.BIKE, 205, 152, 60);
+		TransactionTemplate tx = new TransactionTemplate(transactionManager);
+		java.util.concurrent.CountDownLatch inserted = new java.util.concurrent.CountDownLatch(1);
+		java.util.concurrent.CountDownLatch commit = new java.util.concurrent.CountDownLatch(1);
+		java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+		try {
+			var writerA = pool.submit(() -> tx.executeWithoutResult(status -> {
+				ActivityIntensityHistogram row = new ActivityIntensityHistogram(activity.getId());
+				row.setHeartrate(Map.of(999, 1)); // distinguishable from what ensureHistogram builds
+				histogramRepository.saveAndFlush(row);
+				inserted.countDown();
+				try {
+					commit.await();
+				}
+				catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}));
+			inserted.await();
+			var writerB = pool.submit(() -> histogramService.ensureHistogram(activity));
+			Thread.sleep(500); // let B miss the uncommitted row and block on its insert
+			commit.countDown();
+			writerA.get(30, java.util.concurrent.TimeUnit.SECONDS);
+
+			ActivityIntensityHistogram result = writerB.get(30, java.util.concurrent.TimeUnit.SECONDS);
+
+			assertThat(result.getHeartrate()).containsExactly(Map.entry(999, 1));
+		}
+		finally {
+			pool.shutdownNow();
+		}
 	}
 
 	@Test
