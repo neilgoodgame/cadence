@@ -114,7 +114,10 @@ public interface RecordRepository extends JpaRepository<Record, RecordId> {
 
 	/** Just (power, heartrate), as scalars - ActivityIntensityHistogramService's lazy-backfill
 	 * path builds an activity's intensity histogram from these without loading whole Record
-	 * entities (see TimeDistance). */
+	 * entities (see TimeDistance), and TssRecomputeService.rate scores TSS from them. A bulk
+	 * re-rate calls rate() for every activity from a date onward inside one transaction, and
+	 * full Record entities stayed in the persistence context until commit: re-rating ~19 months
+	 * of rides took the staging backend OOM (#616). */
 	interface PowerHeartrate {
 		Integer getPower();
 

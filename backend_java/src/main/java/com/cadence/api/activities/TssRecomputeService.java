@@ -104,10 +104,14 @@ public class TssRecomputeService {
 
 		// Load records once; recompute normPower from stored per-second power rather than the
 		// activity-level stat (which may be corrupt if Garmin's native power field overrode
-		// the Stryd developer field during upload, inflating the value 10–15x).
-		List<Record> records = recordRepository.findByActivityIdOrderByT(activity.getId());
+		// the Stryd developer field during upload, inflating the value 10–15x). Scalars, not
+		// Record entities: bulk re-rates call this for every activity in one transaction, and
+		// managed entities would all stay in the persistence context until it ends (see
+		// RecordRepository.PowerHeartrate).
+		List<RecordRepository.PowerHeartrate> records = recordRepository.findPowerHeartrateByActivityIdOrderByT(activity.getId());
 		List<Integer> powerSeries = RunningPowerSanitizer.sanitize(
-				records.stream().map(Record::getPower).toList(), activity.getSport(), athlete.getMaxRunningPowerWatts());
+				records.stream().map(RecordRepository.PowerHeartrate::getPower).toList(), activity.getSport(),
+				athlete.getMaxRunningPowerWatts());
 		// This run's power came from the source the athlete currently excludes - score it
 		// against the HR-based fallback below instead of a power-based threshold it doesn't
 		// trust, same reasoning TssCalculator's own >1.5-intensity guard exists for.
@@ -131,7 +135,7 @@ public class TssRecomputeService {
 		if (tss == null) {
 			ZoneSet hrZoneSet = zoneService.getOrCreate(athlete, ZoneType.HEART_RATE);
 			Double hrThreshold = zoneService.referenceFor(athlete, ZoneType.HEART_RATE);
-			List<Integer> hrSeries = records.stream().map(Record::getHeartrate).toList();
+			List<Integer> hrSeries = records.stream().map(RecordRepository.PowerHeartrate::getHeartrate).toList();
 			Map<String, Integer> secondsPerZone = TssCalculator.secondsPerZone(hrSeries, hrZoneSet.getZones(), hrThreshold);
 			tss = TssCalculator.hrBased(secondsPerZone, hrZoneSet.getZones());
 		}
