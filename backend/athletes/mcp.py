@@ -146,14 +146,16 @@ class AthleteMCPTools(ScopedMCPToolset):
         """Set the athlete's FTP, critical running power, and/or threshold pace directly - e.g.
         from a recent field test, or a coach's assessment. Equivalent to editing these fields in
         Preferences: only the fields you pass are changed, and each changed value is trusted
-        unconditionally and recorded in the threshold history ledger (it still ages out and can
-        be superseded by a later qualifying activity or another edit, same as any other entry).
-        Pace is "M:SS" per km.
+        unconditionally and recorded in the threshold history ledger. Like any other entry it can
+        be superseded by a later qualifying activity or another edit; once it leaves the window
+        it ages out, or decays gradually when threshold decay is on (see
+        get_threshold_settings). Pace is "M:SS" per km.
 
         `effective_from` (YYYY-MM-DD, default today) backdates the edit - it's always written as
-        a ledger row, but only becomes the live value if no later row already exists and it
-        isn't already outside threshold_window_days as of today (otherwise it's a correction-
-        only row: still used to re-rate past activities, excluded from "what's current").
+        a ledger row, but only becomes the live value if no later row already exists (with decay
+        on, later decayed and correction-only rows don't count) and it isn't already outside
+        threshold_window_days as of today (otherwise it's a correction-only row: still used to
+        re-rate past activities, excluded from "what's current").
         `rerate_activities` (default true) recomputes intensity/TSS for every activity of the
         affected sport on/after `effective_from`. `preview=true` computes the same outcome
         (including which activities would be re-rated and their current vs. new intensity/TSS)
