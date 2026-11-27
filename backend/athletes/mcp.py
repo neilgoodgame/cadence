@@ -407,8 +407,10 @@ class AthleteMCPTools(ScopedMCPToolset):
         to_date, return the implied value it would contribute to the rolling-window algorithm
         (e.g. 0.95 x best 20-minute power for ftp), the raw pre-transform value, the window
         label, and its status: 'qualified' (within the sanity band), 'rejected_sanity' (outside
-        it), 'accepted' (explicitly accepted despite failing the band), or 'too_short' (no
-        qualifying effort at all, e.g. too short for the field's window). Classified against the
+        it), 'accepted' (explicitly accepted despite failing the band), 'excluded' (excluded from
+        threshold detection for this field, so never a candidate - its implied value is still
+        shown), or 'too_short' (no qualifying effort at all, e.g. too short for the field's
+        window). Classified against the
         athlete's *current* profile value, a single snapshot rather than a moving reference - see
         current_window_value's own docstring for that distinction. Useful for seeing what a model
         would have had to predict between ledger entries, without reconstructing it by hand from

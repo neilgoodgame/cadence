@@ -19,7 +19,7 @@ from accounts.models import User
 from activities.intensity_histogram import ensure_histogram
 from activities.models import Activity
 
-from .threshold_history import FIELD_SPORT
+from .threshold_history import FIELD_SPORT, _excluded_activity_ids
 from .zones import reference_for
 
 # field -> the zone_type whose percentages are relative to that field - the inverse of
@@ -93,14 +93,17 @@ def above_z2_load_for_activity(
     already has for this field (there's no pace-based histogram, and no power/pace cross-check
     anywhere in this module) - not something this wrapper introduces or fixes."""
     histogram = ensure_histogram(activity)
-    if not histogram.power_30s and not histogram.heartrate:
+    # Same HR fallback as load_by_day_for_athlete for an activity excluded from this field's
+    # threshold detection (issue #616).
+    power = None if activity.id in _excluded_activity_ids(athlete, field) else histogram.power_30s
+    if not power and not histogram.heartrate:
         return None
     effective_reference = (
         reference if reference is not None else reference_for(athlete, _ZONE_TYPE_BY_FIELD[field], activity)
     )
     if not effective_reference:
         return None
-    return activity_load(histogram.power_30s, histogram.heartrate, effective_reference, athlete.lthr)
+    return activity_load(power, histogram.heartrate, effective_reference, athlete.lthr)
 
 
 def decay_load_series(daily_loads: dict[date, float]) -> dict[date, float]:
@@ -142,10 +145,15 @@ def load_by_day_for_athlete(
         start_date__date__lte=end,
     ).order_by("start_date")
 
+    # An activity excluded from threshold detection for this field (issue #616) has untrustworthy
+    # power, so it counts through its heart rate instead - activity_load's own fallback for an
+    # activity without usable power. The session still counts as training.
+    excluded_ids = _excluded_activity_ids(athlete, field)
     daily_loads: dict[date, float] = {}
     for activity in activities:
         histogram = ensure_histogram(activity)
-        load = activity_load(histogram.power_30s, histogram.heartrate, anchor_value, lthr)
+        power = None if activity.id in excluded_ids else histogram.power_30s
+        load = activity_load(power, histogram.heartrate, anchor_value, lthr)
         activity_date = activity.start_date.date()
         daily_loads[activity_date] = daily_loads.get(activity_date, 0.0) + load
 
