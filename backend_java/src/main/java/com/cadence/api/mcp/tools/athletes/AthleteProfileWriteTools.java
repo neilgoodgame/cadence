@@ -153,22 +153,32 @@ public class AthleteProfileWriteTools {
 				&& thresholdDecayTauDays == null && thresholdDecayMinPct == null && thresholdDecayMaxPct == null) {
 			throw new ValidationException("Pass at least one setting to change.");
 		}
-		// The REST PATCH clamps these two into range; reject instead here, matching the Django
-		// backend's MCP tool (its serializer rejects out-of-range values).
-		if (thresholdWindowDays != null && (thresholdWindowDays < 1 || thresholdWindowDays > 365)) {
-			throw new ValidationException("Must be between 1 and 365.", "thresholdWindowDays");
-		}
-		if (thresholdSanityPct != null && (thresholdSanityPct < 1 || thresholdSanityPct > 100)) {
-			throw new ValidationException("Must be between 1 and 100.", "thresholdSanityPct");
-		}
+		// Every input is checked here, before anything is applied, so a bad value never leaves
+		// earlier settings half-changed on the athlete object. The REST PATCH clamps window and
+		// sanity into range; this rejects them instead, matching the Django backend's MCP tool
+		// (its serializer rejects out-of-range values).
+		requireRange(thresholdWindowDays, 1, 365, "thresholdWindowDays");
+		requireRange(thresholdSanityPct, 1, 100, "thresholdSanityPct");
+		requireRange(thresholdDecayTauDays, 7, 90, "thresholdDecayTauDays");
+		requireRange(thresholdDecayMinPct, 0, 10, "thresholdDecayMinPct");
+		requireRange(thresholdDecayMaxPct, 0, 30, "thresholdDecayMaxPct");
 		FtpCalculationMethod method = parseEnum(ftpCalculationMethod, FtpCalculationMethod::fromWireValue,
-				"ftpCalculationMethod", "twenty_min_test, sixty_min_direct");
+				FtpCalculationMethod::wireValue, "ftpCalculationMethod", "twenty_min_test, sixty_min_direct");
 		RunningPowerSource runningSource = parseEnum(runningPowerSource, RunningPowerSource::fromWireValue,
-				"runningPowerSource", "stryd, native");
+				RunningPowerSource::wireValue, "runningPowerSource", "stryd, native");
 		BikePowerSource bikeSource = parseEnum(bikePowerSource, BikePowerSource::fromWireValue,
-				"bikePowerSource", "pedals, trainer, any");
+				BikePowerSource::wireValue, "bikePowerSource", "pedals, trainer, any");
 
 		User athlete = userService.getById(athleteId);
+		// min <= max is checked against the merged result (this call's value if passed, else the
+		// stored one), like AthleteService.updateProfile does, since a call can pass only one.
+		int mergedMin = thresholdDecayMinPct != null ? thresholdDecayMinPct : athlete.getThresholdDecayMinPct();
+		int mergedMax = thresholdDecayMaxPct != null ? thresholdDecayMaxPct : athlete.getThresholdDecayMaxPct();
+		if ((thresholdDecayMinPct != null || thresholdDecayMaxPct != null) && mergedMin > mergedMax) {
+			String field = thresholdDecayMaxPct != null && thresholdDecayMinPct == null
+					? "thresholdDecayMaxPct" : "thresholdDecayMinPct";
+			throw new ValidationException("thresholdDecayMinPct must not be greater than thresholdDecayMaxPct.", field);
+		}
 		User setBy = callerSub.equals(athleteId) ? athlete : userService.getById(callerSub);
 		athleteService.updateProfile(athlete, AthleteUpdateRequest.thresholdSettings(thresholdWindowDays,
 				thresholdSanityPct, method, runningSource, bikeSource, thresholdDecayEnabled, thresholdDecayTauDays,
@@ -177,16 +187,29 @@ public class AthleteProfileWriteTools {
 		return athleteProfileTools.thresholdSettingsOf(athlete);
 	}
 
-	private static <T> T parseEnum(String value, java.util.function.Function<String, T> parser, String field,
-			String allowed) {
+	private static void requireRange(Integer value, int min, int max, String field) {
+		if (value != null && (value < min || value > max)) {
+			throw new ValidationException("Must be between " + min + " and " + max + ".", field);
+		}
+	}
+
+	/** Accepts only the exact lowercase wire value - fromWireValue alone also takes "PEDALS" or
+	 * "Sixty_Min_Direct", which the Django backend's tool rejects. */
+	private static <T> T parseEnum(String value, java.util.function.Function<String, T> parser,
+			java.util.function.Function<T, String> wire, String field, String allowed) {
 		if (value == null) {
 			return null;
 		}
+		T parsed;
 		try {
-			return parser.apply(value);
+			parsed = parser.apply(value);
 		}
 		catch (IllegalArgumentException e) {
+			parsed = null;
+		}
+		if (parsed == null || !wire.apply(parsed).equals(value)) {
 			throw new ValidationException("Must be one of: " + allowed + ".", field);
 		}
+		return parsed;
 	}
 }

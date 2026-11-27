@@ -1100,7 +1100,13 @@ class McpToolsIntegrationTest extends IntegrationTest {
 				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, "not-a-source", null, null, null, null),
 				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, "not-a-method", null, null, null, null, null, null),
 				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, 5, null, null),
-				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, null, 8, 4));
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, null, 8, 4),
+				// Exact lowercase wire values only, matching the Django tool (#612 review).
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, "PEDALS", null, null, null, null),
+				// A valid window alongside a bad tau: nothing is applied (#612 review).
+				() -> athleteProfileWriteTools.updateThresholdSettings(90, null, null, null, null, null, 5, null, null),
+				// Only max passed, below the stored min (3): checked against the merged values.
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, null, null, 2));
 		for (var call : calls) {
 			assertThatThrownBy(call).isInstanceOf(ValidationException.class);
 		}

@@ -2279,6 +2279,9 @@ class AthleteToolsTests(TestCase):
             {"ftp_calculation_method": "not-a-method"},
             {"threshold_decay_tau_days": 5},
             {"threshold_decay_min_pct": 8, "threshold_decay_max_pct": 4},
+            {"bike_power_source": "PEDALS"},  # exact lowercase values only, same as Java
+            {"threshold_window_days": 90, "threshold_decay_tau_days": 5},  # nothing applied
+            {"threshold_decay_max_pct": 2},  # below the stored min (3)
         ):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValidationError):
                 tools.update_threshold_settings(**kwargs)
