@@ -131,7 +131,12 @@ def _gather_candidates(athlete: User, field: str, from_date: date, end: date) ->
 
 
 def _gather_manual_entries(
-    athlete: User, field: str, from_date: date, end: date, new_entry: DecayManualEntry | None
+    athlete: User,
+    field: str,
+    from_date: date,
+    end: date,
+    new_entry: DecayManualEntry | None,
+    already_recorded: bool = True,
 ) -> list[DecayManualEntry]:
     """Every surviving (not correction-only - same exclusion `_replay_full_history_into`'s own
     manual-row merge already applies) manual ledger row in `[from_date, end]`, marked
@@ -146,7 +151,7 @@ def _gather_manual_entries(
         effective_from__lte=end,
     )
     entries = [
-        DecayManualEntry(date=row.effective_from, value=_row_value(field, row), already_recorded=True)
+        DecayManualEntry(date=row.effective_from, value=_row_value(field, row), already_recorded=already_recorded)
         for row in existing
     ]
     if new_entry is not None:
@@ -171,6 +176,7 @@ def _simulate_suffix(
     end: date,
     settings: DecaySettings,
     new_manual_entry: DecayManualEntry | None,
+    emit_existing_manual: bool = False,
 ) -> list[Step]:
     """Gathers every input from the real ledger and runs `simulate` - the read-only half shared
     by resimulate_suffix, gather_preview_steps and simulate_suffix_steps, so they can never
@@ -179,7 +185,13 @@ def _simulate_suffix(
     seed_anchor_value, seed_anchor_date, seed_anchor_kind = _seed_anchor(athlete, field, from_date)
 
     candidates = _gather_candidates(athlete, field, from_date, end)
-    manual_entries = _gather_manual_entries(athlete, field, from_date, end, new_manual_entry)
+    # Existing manual rows normally go in as already_recorded, so `simulate` resets the anchor
+    # without emitting a Step for a row the ledger already has (resimulate_suffix keeps them).
+    # A preview writes nothing, so it emits them instead - otherwise a manual entry would change
+    # the value with no visible row, and the series would look like it stopped early.
+    manual_entries = _gather_manual_entries(
+        athlete, field, from_date, end, new_manual_entry, already_recorded=not emit_existing_manual
+    )
     corrections = _gather_corrections(athlete, field, end)
 
     load_by_day = (
@@ -380,4 +392,4 @@ def gather_preview_steps(
         max_pct=max_pct if max_pct is not None else base_settings.max_pct,
         enabled=True,
     )
-    return _simulate_suffix(athlete, field, from_date, end, settings, None), settings
+    return _simulate_suffix(athlete, field, from_date, end, settings, None, emit_existing_manual=True), settings

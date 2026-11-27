@@ -1964,6 +1964,7 @@ class AthleteToolsTests(TestCase):
         self.assertEqual(result["settings_used"]["max_pct"], 12)
         self.assertGreater(len(result["data"]), 0)
         self.assertIn("decayed", {step["kind"] for step in result["data"]})
+        self.assertEqual(result["value_at_to"], result["data"][-1]["value"])
         self.assertEqual(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").count(), rows_before)
         athlete.refresh_from_db()
         self.assertEqual(athlete.ftp, ftp_before)

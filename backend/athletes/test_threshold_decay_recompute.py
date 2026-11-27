@@ -580,6 +580,42 @@ class GatherPreviewStepsTests(TestCase):
         athlete.refresh_from_db()
         self.assertEqual(athlete.ftp, ftp_before)
 
+    def test_a_long_range_ending_with_manual_entries_covers_up_to_to(self):
+        """A preview's series ran on silently past existing manual entries: they reset the
+        anchor as already-recorded rows, so the value changed with no visible row and a 2-year
+        preview looked like it stopped early. They now appear as kind "manual" rows."""
+        athlete = _decay_athlete(email="preview-manual-rows@example.cc")
+        day0 = date(2025, 1, 1)
+        _ledger_row(athlete, day0, 300)
+        _ledger_row(athlete, day0 + timedelta(days=690), 260)
+        _ledger_row(athlete, day0 + timedelta(days=700), 255)
+        rows_before = ThresholdHistory.objects.filter(athlete=athlete, field="ftp").count()
+        end = day0 + timedelta(days=705)  # 255 is still inside the 10-day window here
+
+        steps, _settings = gather_preview_steps(athlete, "ftp", day0 + timedelta(days=1), end)
+
+        manual = [(step.effective_from, round(step.value)) for step in steps if step.kind == "manual"]
+        self.assertEqual(manual, [(day0 + timedelta(days=690), 260), (day0 + timedelta(days=700), 255)])
+        # So it's the last change, and the value on `end`.
+        self.assertEqual((steps[-1].kind, round(steps[-1].value)), ("manual", 255))
+        self.assertEqual(ThresholdHistory.objects.filter(athlete=athlete, field="ftp").count(), rows_before)
+
+    def test_a_split_preview_matches_the_continuous_one_up_to_the_split(self):
+        """Documents the boundary behaviour: `simulate` is causal, so a preview's first part is
+        identical to the matching part of a longer preview. The second part of a split starts
+        from the real ledger instead of the first part's simulated value, so it may differ."""
+        athlete = _decay_athlete(email="preview-split@example.cc")
+        day0 = date(2025, 1, 1)
+        _ledger_row(athlete, day0, 300)
+        _ledger_row(athlete, day0 + timedelta(days=200), 280)
+        start, split, end = day0 + timedelta(days=1), day0 + timedelta(days=120), day0 + timedelta(days=365)
+
+        continuous, _ = gather_preview_steps(athlete, "ftp", start, end)
+        first_half, _ = gather_preview_steps(athlete, "ftp", start, split)
+
+        self.assertGreater(len(first_half), 1)
+        self.assertEqual(first_half, [step for step in continuous if step.current_from <= split])
+
     def test_defaults_to_the_athletes_own_settings_when_nothing_is_overridden(self):
         athlete = _decay_athlete(email="preview-defaults@example.cc")
         _make_power_activity(athlete, datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=260)

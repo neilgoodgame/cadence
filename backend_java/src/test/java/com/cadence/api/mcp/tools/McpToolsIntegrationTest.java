@@ -1160,6 +1160,7 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		List<Map<String, Object>> data = (List<Map<String, Object>>) result.get("data");
 		assertThat(data).isNotEmpty();
 		assertThat(data).anyMatch(step -> "decayed".equals(step.get("kind")));
+		assertThat(result.get("value_at_to")).isEqualTo(data.get(data.size() - 1).get("value"));
 		assertThat(thresholdHistoryRepository
 				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP)).hasSize((int) rowsBefore);
 		User reloaded = userRepository.findById(athlete.getId()).orElseThrow();

@@ -230,7 +230,14 @@ public class AthleteProfileTools {
 			+ "alternatives once it already is. Never writes to the ledger, and the simulation "
 			+ "always runs as if decay were enabled regardless of the athlete's own "
 			+ "thresholdDecayEnabled - otherwise every override here would be silently ignored. "
-			+ "settingsUsed reports the tauDays/minPct/maxPct the simulation actually ran with.",
+			+ "settingsUsed reports the tauDays/minPct/maxPct the simulation actually ran with.\n\n"
+			+ "data covers the whole [from, to] range, with no row cap. A row appears only when the "
+			+ "rounded value changes (measured, manual or decayed), and the value holds until the "
+			+ "next row; value_at_to is the value in effect on to. Manual ledger entries in the "
+			+ "range appear as kind \"manual\" rows. The simulation starts from the real ledger as "
+			+ "it stood the day before from, not from an earlier preview's result, so two adjacent "
+			+ "previews can disagree at their boundary when the real ledger differs from the "
+			+ "simulated one there (e.g. a value that only exists because decay is simulated).",
 			annotations = @McpTool.McpAnnotations(
 					readOnlyHint = true, destructiveHint = false, idempotentHint = true, openWorldHint = false))
 	public Map<String, Object> previewThresholdDecay(
@@ -275,21 +282,26 @@ public class AthleteProfileTools {
 		ThresholdDecayRecomputeService.PreviewResult result = thresholdDecayRecomputeService.gatherPreviewSteps(
 				athlete, effectiveField, from, to, tauDays, minPct, maxPct);
 		ThresholdDecay.DecaySettings settings = result.settingsUsed();
-		return Map.of(
-				"field", field,
-				"settings_used",
-				Map.of("tau_days", settings.tauDays(), "min_pct", settings.minPct(), "max_pct", settings.maxPct()),
-				"data", result.steps().stream().map(step -> {
-					Map<String, Object> row = new LinkedHashMap<>();
-					row.put("value", effectiveField == ThresholdField.THRESHOLD_PACE
-							? ThresholdDecayRecomputeService.secondsToMmss(step.value())
-							: (int) Math.round(step.value()));
-					row.put("kind", step.kind());
-					row.put("activity_id", step.activityId());
-					row.put("effective_from", step.effectiveFrom());
-					row.put("current_from", step.currentFrom());
-					return row;
-				}).toList());
+		java.util.function.Function<Double, Object> wire = value -> effectiveField == ThresholdField.THRESHOLD_PACE
+				? ThresholdDecayRecomputeService.secondsToMmss(value)
+				: (Object) (int) Math.round(value);
+		List<ThresholdDecay.Step> steps = result.steps();
+		Map<String, Object> response = new LinkedHashMap<>();
+		response.put("field", field);
+		// null when the preview produced no rows at all (e.g. no ledger to start from).
+		response.put("value_at_to", steps.isEmpty() ? null : wire.apply(steps.get(steps.size() - 1).value()));
+		response.put("settings_used",
+				Map.of("tau_days", settings.tauDays(), "min_pct", settings.minPct(), "max_pct", settings.maxPct()));
+		response.put("data", steps.stream().map(step -> {
+			Map<String, Object> row = new LinkedHashMap<>();
+			row.put("value", wire.apply(step.value()));
+			row.put("kind", step.kind());
+			row.put("activity_id", step.activityId());
+			row.put("effective_from", step.effectiveFrom());
+			row.put("current_from", step.currentFrom());
+			return row;
+		}).toList());
+		return response;
 	}
 
 	@McpTool(name = "list_activity_above_z2_load", description = "Issue #487: for every one of "

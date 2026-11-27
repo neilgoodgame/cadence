@@ -524,7 +524,15 @@ class AthleteMCPTools(ScopedMCPToolset):
         alternatives once it already is. Never writes to the ledger, and the simulation always
         runs as if decay were enabled regardless of the athlete's own threshold_decay_enabled -
         otherwise every override here would be silently ignored. settings_used reports the
-        tau_days/min_pct/max_pct the simulation actually ran with."""
+        tau_days/min_pct/max_pct the simulation actually ran with.
+
+        `data` covers the whole [from_date, to_date] range, with no row cap. A row appears only
+        when the rounded value changes (measured, manual or decayed), and the value holds until
+        the next row; value_at_to is the value in effect on to_date. Manual ledger entries in the
+        range appear as kind "manual" rows. The simulation starts from the real ledger as it
+        stood the day before from_date, not from an earlier preview's result, so two adjacent
+        previews can disagree at their boundary when the real ledger differs from the simulated
+        one there (e.g. a value that only exists because decay is simulated)."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
@@ -556,8 +564,13 @@ class AthleteMCPTools(ScopedMCPToolset):
             raise ValidationError({"min_pct": "Must not exceed max_pct."})
 
         steps, settings_used = gather_preview_steps(athlete, field, from_d, to_d, tau_days, min_pct, max_pct)
+
+        def wire(value: float) -> int | str:
+            return _seconds_to_mmss(value) if field == "threshold_pace" else round(value)
+
         return {
             "field": field,
+            "value_at_to": wire(steps[-1].value) if steps else None,
             "settings_used": {
                 "tau_days": settings_used.tau_days,
                 "min_pct": settings_used.min_pct,
@@ -565,7 +578,7 @@ class AthleteMCPTools(ScopedMCPToolset):
             },
             "data": [
                 {
-                    "value": _seconds_to_mmss(step.value) if field == "threshold_pace" else round(step.value),
+                    "value": wire(step.value),
                     "kind": step.kind,
                     "activity_id": step.activity_id,
                     "effective_from": step.effective_from.isoformat(),
