@@ -3,7 +3,7 @@ backend's mcp/tools/athletes/*.java (AthleteProfileTools, BestEffortTools, Fitne
 Reuses athletes/views.py's existing logic directly (Django has no separate service layer).
 """
 
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from django.shortcuts import get_object_or_404
@@ -18,6 +18,7 @@ from authn.mcp_scopes import ACTIVITIES_READ, ACTIVITIES_WRITE
 from authn.mcp_toolset import ScopedMCPToolset
 from core.derived import DEFAULT_FITNESS_WINDOW_DAYS, compute_above_z2_fitness_series, compute_fitness_series
 
+from . import threshold_exclusions
 from .decay_load import above_z2_load_for_activity
 from .models import ThresholdHistory
 from .threshold_decay_recompute import gather_preview_steps
@@ -64,6 +65,11 @@ def _threshold_settings(athlete: User) -> dict[str, Any]:
         "threshold_decay_min_pct": athlete.threshold_decay_min_pct,
         "threshold_decay_max_pct": athlete.threshold_decay_max_pct,
     }
+
+
+def _isoformat_dates(row: dict[str, Any]) -> dict[str, Any]:
+    """MCP results are plain JSON - render the REST wire dicts' date/datetime values as ISO strings."""
+    return {key: value.isoformat() if isinstance(value, date | datetime) else value for key, value in row.items()}
 
 
 class AthleteMCPTools(ScopedMCPToolset):
@@ -448,6 +454,60 @@ class AthleteMCPTools(ScopedMCPToolset):
                 for c in candidates
             ],
         }
+
+    def list_threshold_exclusions(self, field: str | None = None, activity_id: str | None = None) -> dict[str, Any]:
+        """List the activities excluded from threshold detection (issue #616), oldest first -
+        optionally only one field's (ftp, critical_run_power or threshold_pace), or only one
+        activity's. Each entry has the field, activity_id, activity_name, activity_date,
+        set_by_user_id and created_at. Exclude or re-include an activity with
+        exclude_threshold_candidate / include_threshold_candidate."""
+        self._require_scope(ACTIVITIES_READ)
+        athlete_id = self._effective_athlete_id()
+        self._require_read(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        rows = threshold_exclusions.list_exclusions(athlete, field=field, activity_id=activity_id)
+        return {"data": [_isoformat_dates(threshold_exclusions.exclusion_wire(row)) for row in rows]}
+
+    def exclude_threshold_candidate(self, field: str, activity_id: str, preview: bool = True) -> dict[str, Any]:
+        """Exclude one activity from threshold detection for one field (issue #616) - e.g. a ride
+        recorded on an uncalibrated power meter whose implied FTP is wrong. The activity is then
+        never a candidate for `field` (ftp, critical_run_power or threshold_pace; it must be of
+        that field's sport), it can't define a ledger row, and the field's threshold history is
+        rebuilt from the activity's date, re-rating TSS/intensity from there. Any explicit
+        acceptance of the same activity for `field` is removed. The activity still counts toward
+        training load; with threshold decay on, its decay load uses its heart rate instead of its
+        power (so it adds none if the athlete has no LTHR). Exclusion is per field - excluding a
+        ride for ftp doesn't affect any other field.
+
+        `preview` defaults to TRUE: nothing is saved, and the result shows what would change -
+        value_before/value_after (the field's live value) and rows_removed/rows_added (the
+        threshold-history rows from the activity's date on that the rebuild would drop or
+        create). Check the preview, then call again with preview=false to apply it. Excluding an
+        already-excluded activity changes nothing. Undo with include_threshold_candidate."""
+        return self._change_exclusion(field, activity_id, preview, exclude=True)
+
+    def include_threshold_candidate(self, field: str, activity_id: str, preview: bool = True) -> dict[str, Any]:
+        """Undo exclude_threshold_candidate (issue #616): the activity counts again for `field`'s
+        threshold detection, and the field's threshold history is rebuilt from the activity's
+        date. Fails if the activity isn't excluded for `field`. `preview` defaults to TRUE, with
+        the same result shape as exclude_threshold_candidate - call again with preview=false to
+        apply it."""
+        return self._change_exclusion(field, activity_id, preview, exclude=False)
+
+    def _change_exclusion(self, field: str, activity_id: str, preview: bool, exclude: bool) -> dict[str, Any]:
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        sub = self._require_write(athlete_id)
+        athlete = get_object_or_404(User, pk=athlete_id)
+        if exclude:
+            set_by = athlete if sub == athlete_id else get_object_or_404(User, pk=sub)
+            effect = threshold_exclusions.exclude(athlete, field, activity_id, set_by=set_by, preview=preview)
+        else:
+            effect = threshold_exclusions.include(athlete, field, activity_id, preview=preview)
+        wire = threshold_exclusions.effect_wire(effect)
+        wire["rows_removed"] = [_isoformat_dates(row) for row in wire["rows_removed"]]
+        wire["rows_added"] = [_isoformat_dates(row) for row in wire["rows_added"]]
+        return wire
 
     def get_threshold_settings(self) -> dict[str, Any]:
         """Get the authenticated athlete's threshold-related settings: the trailing window
