@@ -207,6 +207,96 @@ class ThresholdHistoryServiceIntegrationTest extends IntegrationTest {
 
 	// --- isStale under decay (issue #485, phase 10) ---
 
+	private User newDecayAthlete608(String email, boolean decayEnabled) {
+		User athlete = newAthlete(email);
+		athlete.setThresholdDecayEnabled(decayEnabled);
+		athlete.setThresholdWindowDays(10);
+		athlete.setThresholdSanityPct(50);
+		athlete.setThresholdDecayTauDays(5);
+		athlete.setThresholdDecayMinPct(3);
+		athlete.setThresholdDecayMaxPct(12);
+		return userRepository.save(athlete);
+	}
+
+	// Issue #608: a decay-on ledger has a decayed row nearly every day of a glide, which used to
+	// make almost every backdated edit correction-only. recordManualValue has no asOf override,
+	// so the dates are relative to the real today.
+	@Test
+	void backdatedEditInsideTheWindowBecomesCurrentDespiteLaterDecayedRows() {
+		User athlete = newDecayAthlete608("decay-608-on@example.cc", true);
+		LocalDate today = LocalDate.now();
+		newEntry(athlete, ThresholdField.FTP, 300, today.minusDays(20), ThresholdHistoryKind.MANUAL);
+		newEntry(athlete, ThresholdField.FTP, 290, today.minusDays(2), ThresholdHistoryKind.DECAYED);
+		newEntry(athlete, ThresholdField.FTP, 288, today.minusDays(1), ThresholdHistoryKind.DECAYED);
+		LocalDate editDate = today.minusDays(3);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 280, null, athlete, editDate, true, false);
+
+		assertThat(result.becameCurrent()).isTrue();
+		assertThat(result.isCorrectionOnly()).isFalse();
+		List<ThresholdHistory> rows = thresholdHistoryRepository
+				.findByAthleteIdAndFieldOrderByEffectiveFromDescIdDesc(athlete.getId(), ThresholdField.FTP);
+		assertThat(rows).filteredOn(r -> r.getKind() == ThresholdHistoryKind.MANUAL && r.getEffectiveFrom().equals(editDate))
+				.singleElement()
+				.satisfies(r -> {
+					assertThat(r.getValueNumeric()).isEqualTo(280);
+					assertThat(r.isCorrectionOnly()).isFalse();
+				});
+		// The resimulation from the edit's date replaced the old glide's later decayed rows.
+		assertThat(rows).filteredOn(r -> r.getKind() == ThresholdHistoryKind.DECAYED && r.getEffectiveFrom().isAfter(editDate))
+				.isEmpty();
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isEqualTo(280);
+	}
+
+	// #610 review: a correction-only row is never the live value with decay on - including one
+	// the #608 bug itself saved correction-only, which mustn't keep blocking later edits.
+	@Test
+	void backdatedEditDuringDecayIsNotBlockedByALaterCorrectionOnlyRow() {
+		User athlete = newDecayAthlete608("decay-608-correction@example.cc", true);
+		LocalDate today = LocalDate.now();
+		newEntry(athlete, ThresholdField.FTP, 300, today.minusDays(20), ThresholdHistoryKind.MANUAL);
+		ThresholdHistory correction = newEntry(athlete, ThresholdField.FTP, 290, today.minusDays(1), ThresholdHistoryKind.MANUAL);
+		correction.setCorrectionOnly(true);
+		thresholdHistoryRepository.save(correction);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 280, null, athlete, today.minusDays(3), true, false);
+
+		assertThat(result.becameCurrent()).isTrue();
+		assertThat(result.isCorrectionOnly()).isFalse();
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getFtp()).isEqualTo(280);
+	}
+
+	@Test
+	void backdatedEditDuringDecayIsStillCorrectionOnlyBehindALaterNonDecayedRow() {
+		User athlete = newDecayAthlete608("decay-608-manual@example.cc", true);
+		LocalDate today = LocalDate.now();
+		newEntry(athlete, ThresholdField.FTP, 300, today.minusDays(1), ThresholdHistoryKind.MANUAL);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 280, null, athlete, today.minusDays(3), true, false);
+
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(result.becameCurrent()).isFalse();
+	}
+
+	// Nothing regenerates a decayed row left over from a since-disabled decay period, so for a
+	// decay-off athlete it really does still outrank the backdated edit.
+	@Test
+	void decayOffStillCountsALeftoverDecayedRowAsLater() {
+		User athlete = newDecayAthlete608("decay-608-off@example.cc", false);
+		LocalDate today = LocalDate.now();
+		newEntry(athlete, ThresholdField.FTP, 300, today.minusDays(8), ThresholdHistoryKind.MANUAL);
+		newEntry(athlete, ThresholdField.FTP, 290, today.minusDays(1), ThresholdHistoryKind.DECAYED);
+
+		var result = thresholdHistoryService.recordManualValue(
+				athlete, ThresholdField.FTP, 280, null, athlete, today.minusDays(3), true, false);
+
+		assertThat(result.isCorrectionOnly()).isTrue();
+		assertThat(result.becameCurrent()).isFalse();
+	}
+
 	@Test
 	void isStaleStaysTrueWhileAValueIsActivelyDecaying() {
 		// Decay is on and the anchor (2026-01-01) has aged out of a 30-day window, but a decayed

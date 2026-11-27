@@ -2544,7 +2544,10 @@ paths:
                     it's a legitimate historical correction either way, but it only becomes the
                     live value when both no existing row has a later effective_from and it isn't
                     already outside threshold_window_days as of today (i.e. it wouldn't be stale
-                    the moment it's saved). Otherwise it's correction-only: still used to re-rate
+                    the moment it's saved). With threshold_decay_enabled, later decayed and
+                    correction-only rows don't count as later rows: the edit's own resimulation
+                    regenerates the decayed ones, and a correction-only row is never the live
+                    value. Otherwise it's correction-only: still used to re-rate
                     activities in its span (see rerate_activities), excluded from "current"
                     everywhere else (GET /v1/athletes/{id}/thresholds, is_stale, and the
                     dashboard). A future date, or a date before the athlete's first activity of
@@ -6232,8 +6235,9 @@ components:
           type: boolean
           description: >-
             True for a backdated manual row (see PATCH /v1/athletes/{id}'s effective_from) that
-            never became the live value - a later row already existed, or it was already
-            outside threshold_window_days as of the date it was saved. Still used by any
+            never became the live value - a later row already existed (with
+            threshold_decay_enabled, a later manual or measured row), or it was already outside
+            threshold_window_days as of the date it was saved. Still used by any
             activity-scoped lookup (filtered on current_from, same as any other row) - just
             excluded from "current" everywhere else.
           example: false
