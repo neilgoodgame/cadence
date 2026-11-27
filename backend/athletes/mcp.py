@@ -51,6 +51,21 @@ def _thresholds_summary(athlete: User) -> dict[str, Any]:
     return result
 
 
+def _threshold_settings(athlete: User) -> dict[str, Any]:
+    """get_threshold_settings' body, shared with update_threshold_settings' return value."""
+    return {
+        "threshold_window_days": athlete.threshold_window_days,
+        "threshold_sanity_pct": athlete.threshold_sanity_pct,
+        "ftp_calculation_method": athlete.ftp_calculation_method,
+        "running_power_source": athlete.running_power_source,
+        "bike_power_source": athlete.bike_power_source,
+        "threshold_decay_enabled": athlete.threshold_decay_enabled,
+        "threshold_decay_tau_days": athlete.threshold_decay_tau_days,
+        "threshold_decay_min_pct": athlete.threshold_decay_min_pct,
+        "threshold_decay_max_pct": athlete.threshold_decay_max_pct,
+    }
+
+
 class AthleteMCPTools(ScopedMCPToolset):
     def get_me(self) -> dict[str, Any]:
         """Get the authenticated athlete's profile and training context: age, weight, FTP,
@@ -433,20 +448,63 @@ class AthleteMCPTools(ScopedMCPToolset):
     def get_threshold_settings(self) -> dict[str, Any]:
         """Get the authenticated athlete's threshold-related settings: the trailing window
         (threshold_window_days) and sanity-band width (threshold_sanity_pct) the rolling-window
-        algorithm uses, and which power-calculation method/source each threshold field is
-        derived from. Useful for knowing which parameters a given ledger was produced under
-        before calibrating anything against it."""
+        algorithm uses, which power-calculation method/source each threshold field is derived
+        from, and the threshold-decay settings (threshold_decay_enabled, tau_days, min_pct,
+        max_pct). Useful for knowing which parameters a given ledger was produced under before
+        calibrating anything against it. Change them with update_threshold_settings."""
         self._require_scope(ACTIVITIES_READ)
         athlete_id = self._effective_athlete_id()
         self._require_read(athlete_id)
-        athlete = get_object_or_404(User, pk=athlete_id)
-        return {
-            "threshold_window_days": athlete.threshold_window_days,
-            "threshold_sanity_pct": athlete.threshold_sanity_pct,
-            "ftp_calculation_method": athlete.ftp_calculation_method,
-            "running_power_source": athlete.running_power_source,
-            "bike_power_source": athlete.bike_power_source,
+        return _threshold_settings(get_object_or_404(User, pk=athlete_id))
+
+    def update_threshold_settings(
+        self,
+        threshold_window_days: int | None = None,
+        threshold_sanity_pct: int | None = None,
+        ftp_calculation_method: str | None = None,
+        running_power_source: str | None = None,
+        bike_power_source: str | None = None,
+        threshold_decay_enabled: bool | None = None,
+        threshold_decay_tau_days: int | None = None,
+        threshold_decay_min_pct: int | None = None,
+        threshold_decay_max_pct: int | None = None,
+    ) -> dict[str, Any]:
+        """Change the athlete's threshold-related settings (issue #499) - the same ones
+        get_threshold_settings returns, and the same as editing them in Preferences. Only the
+        settings you pass are changed. threshold_window_days (1-365) and threshold_sanity_pct
+        (1-100) drive the rolling-window algorithm; ftp_calculation_method is twenty_min_test or
+        sixty_min_direct; running_power_source is stryd or native; bike_power_source is pedals,
+        trainer or any. threshold_decay_enabled turns gradual threshold decay on or off, tuned by
+        threshold_decay_tau_days (7-90), threshold_decay_min_pct (0-10) and
+        threshold_decay_max_pct (0-30, not below min_pct). Changing a setting doesn't rewrite the
+        existing threshold history - it applies from the next recompute, or rebuild the history
+        to re-derive it under the new settings. Use preview_threshold_decay to try decay
+        parameters before saving them. Returns the full settings, as get_threshold_settings
+        does."""
+        self._require_scope(ACTIVITIES_WRITE)
+        athlete_id = self._effective_athlete_id()
+        sub = self._require_write(athlete_id)
+        data = {
+            name: value
+            for name, value in {
+                "threshold_window_days": threshold_window_days,
+                "threshold_sanity_pct": threshold_sanity_pct,
+                "ftp_calculation_method": ftp_calculation_method,
+                "running_power_source": running_power_source,
+                "bike_power_source": bike_power_source,
+                "threshold_decay_enabled": threshold_decay_enabled,
+                "threshold_decay_tau_days": threshold_decay_tau_days,
+                "threshold_decay_min_pct": threshold_decay_min_pct,
+                "threshold_decay_max_pct": threshold_decay_max_pct,
+            }.items()
+            if value is not None
         }
+        if not data:
+            raise ValidationError("Pass at least one setting to change.")
+        athlete = get_object_or_404(User, pk=athlete_id)
+        set_by = athlete if sub == athlete_id else get_object_or_404(User, pk=sub)
+        _apply_threshold_patch(athlete, data, set_by)
+        return _threshold_settings(athlete)
 
     def preview_threshold_decay(
         self,

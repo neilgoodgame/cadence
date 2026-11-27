@@ -2235,6 +2235,67 @@ class AthleteToolsTests(TestCase):
         self.assertEqual(result["threshold_sanity_pct"], 20)
         self.assertEqual(result["ftp_calculation_method"], athlete.ftp_calculation_method)
         self.assertEqual(result["running_power_source"], athlete.running_power_source)
+        self.assertFalse(result["threshold_decay_enabled"])
+        self.assertEqual(result["threshold_decay_tau_days"], athlete.threshold_decay_tau_days)
+        self.assertEqual(result["threshold_decay_min_pct"], athlete.threshold_decay_min_pct)
+        self.assertEqual(result["threshold_decay_max_pct"], athlete.threshold_decay_max_pct)
+
+    def test_update_threshold_settings_changes_only_the_settings_passed(self) -> None:
+        """Issue #499: the MCP counterpart of editing these settings in Preferences."""
+        athlete = User.objects.create_user(
+            email="mcp-threshold-settings-update@example.cc", password="x", name="Athlete", threshold_sanity_pct=20
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        result = tools.update_threshold_settings(
+            threshold_window_days=90,
+            bike_power_source="pedals",
+            ftp_calculation_method="sixty_min_direct",
+            threshold_decay_enabled=True,
+            threshold_decay_tau_days=30,
+        )
+
+        self.assertEqual(result["threshold_window_days"], 90)
+        self.assertEqual(result["bike_power_source"], "pedals")
+        self.assertEqual(result["ftp_calculation_method"], "sixty_min_direct")
+        self.assertTrue(result["threshold_decay_enabled"])
+        self.assertEqual(result["threshold_decay_tau_days"], 30)
+        self.assertEqual(result["threshold_sanity_pct"], 20)  # not passed, so unchanged
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.threshold_window_days, 90)
+        self.assertEqual(athlete.bike_power_source, "pedals")
+        self.assertTrue(athlete.threshold_decay_enabled)
+        self.assertEqual(athlete.threshold_sanity_pct, 20)
+
+    def test_update_threshold_settings_rejects_invalid_values(self) -> None:
+        athlete = User.objects.create_user(email="mcp-threshold-settings-bad@example.cc", password="x", name="Athlete")
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read activities:write"))
+
+        for kwargs in (
+            {},
+            {"threshold_window_days": 0},
+            {"threshold_sanity_pct": 101},
+            {"bike_power_source": "not-a-source"},
+            {"ftp_calculation_method": "not-a-method"},
+            {"threshold_decay_tau_days": 5},
+            {"threshold_decay_min_pct": 8, "threshold_decay_max_pct": 4},
+            {"bike_power_source": "PEDALS"},  # exact lowercase values only, same as Java
+            {"threshold_window_days": 90, "threshold_decay_tau_days": 5},  # nothing applied
+            {"threshold_decay_max_pct": 2},  # below the stored min (3)
+        ):
+            with self.subTest(kwargs=kwargs), self.assertRaises(ValidationError):
+                tools.update_threshold_settings(**kwargs)
+        athlete.refresh_from_db()
+        self.assertEqual(athlete.threshold_window_days, 112)
+
+    def test_update_threshold_settings_requires_activities_write_scope(self) -> None:
+        athlete = User.objects.create_user(
+            email="mcp-threshold-settings-scope@example.cc", password="x", name="Athlete"
+        )
+        tools = AthleteMCPTools(request=_mcp_request(athlete, "activities:read"))
+
+        with self.assertRaises(PermissionDenied):
+            tools.update_threshold_settings(threshold_window_days=90)
 
     def test_get_import_settings_returns_the_athletes_overlap_handling(self) -> None:
         athlete = User.objects.create_user(

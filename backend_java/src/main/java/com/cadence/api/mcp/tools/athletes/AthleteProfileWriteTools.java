@@ -1,7 +1,10 @@
 package com.cadence.api.mcp.tools.athletes;
 
 import com.cadence.api.athletes.AthleteService;
+import com.cadence.api.athletes.BikePowerSource;
+import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.OverlapHandling;
+import com.cadence.api.athletes.RunningPowerSource;
 import com.cadence.api.athletes.dto.AthleteUpdateRequest;
 import com.cadence.api.athletes.dto.AthleteUpdateResponse;
 import com.cadence.api.common.error.ValidationException;
@@ -115,5 +118,98 @@ public class AthleteProfileWriteTools {
 		athleteService.updateProfile(athlete, request, setBy);
 
 		return Map.of("overlap_handling", athlete.getOverlapHandling());
+	}
+
+	@McpTool(name = "update_threshold_settings", description = "Change the athlete's "
+			+ "threshold-related settings (issue #499) - the same ones get_threshold_settings "
+			+ "returns, and the same as editing them in Preferences. Only the settings you pass are "
+			+ "changed. thresholdWindowDays (1-365) and thresholdSanityPct (1-100) drive the "
+			+ "rolling-window algorithm; ftpCalculationMethod is twenty_min_test or "
+			+ "sixty_min_direct; runningPowerSource is stryd or native; bikePowerSource is pedals, "
+			+ "trainer or any. thresholdDecayEnabled turns gradual threshold decay on or off, "
+			+ "tuned by thresholdDecayTauDays (7-90), thresholdDecayMinPct (0-10) and "
+			+ "thresholdDecayMaxPct (0-30, not below minPct). Changing a setting doesn't rewrite "
+			+ "the existing threshold history - it applies from the next recompute, or rebuild the "
+			+ "history to re-derive it under the new settings. Use preview_threshold_decay to try "
+			+ "decay parameters before saving them. Returns the full settings, as "
+			+ "get_threshold_settings does.",
+			annotations = @McpTool.McpAnnotations(
+					readOnlyHint = false, destructiveHint = false, idempotentHint = true, openWorldHint = false))
+	public Map<String, Object> updateThresholdSettings(
+			@McpToolParam(description = "Trailing window in days, 1-365", required = false) Integer thresholdWindowDays,
+			@McpToolParam(description = "Sanity-band width in percent, 1-100", required = false) Integer thresholdSanityPct,
+			@McpToolParam(description = "twenty_min_test or sixty_min_direct", required = false) String ftpCalculationMethod,
+			@McpToolParam(description = "stryd or native", required = false) String runningPowerSource,
+			@McpToolParam(description = "pedals, trainer, or any", required = false) String bikePowerSource,
+			@McpToolParam(description = "Turn gradual threshold decay on or off", required = false) Boolean thresholdDecayEnabled,
+			@McpToolParam(description = "Decay time constant in days, 7-90", required = false) Integer thresholdDecayTauDays,
+			@McpToolParam(description = "Minimum decay amplitude in percent, 0-10", required = false) Integer thresholdDecayMinPct,
+			@McpToolParam(description = "Maximum decay amplitude in percent, 0-30", required = false) Integer thresholdDecayMaxPct) {
+		authorizer.requireScope(McpScopes.ACTIVITIES_WRITE);
+		String athleteId = accessGuard.effectiveAthleteId();
+		String callerSub = accessGuard.requireWrite(athleteId);
+		if (thresholdWindowDays == null && thresholdSanityPct == null && ftpCalculationMethod == null
+				&& runningPowerSource == null && bikePowerSource == null && thresholdDecayEnabled == null
+				&& thresholdDecayTauDays == null && thresholdDecayMinPct == null && thresholdDecayMaxPct == null) {
+			throw new ValidationException("Pass at least one setting to change.");
+		}
+		// Every input is checked here, before anything is applied, so a bad value never leaves
+		// earlier settings half-changed on the athlete object. The REST PATCH clamps window and
+		// sanity into range; this rejects them instead, matching the Django backend's MCP tool
+		// (its serializer rejects out-of-range values).
+		requireRange(thresholdWindowDays, 1, 365, "thresholdWindowDays");
+		requireRange(thresholdSanityPct, 1, 100, "thresholdSanityPct");
+		requireRange(thresholdDecayTauDays, 7, 90, "thresholdDecayTauDays");
+		requireRange(thresholdDecayMinPct, 0, 10, "thresholdDecayMinPct");
+		requireRange(thresholdDecayMaxPct, 0, 30, "thresholdDecayMaxPct");
+		FtpCalculationMethod method = parseEnum(ftpCalculationMethod, FtpCalculationMethod::fromWireValue,
+				FtpCalculationMethod::wireValue, "ftpCalculationMethod", "twenty_min_test, sixty_min_direct");
+		RunningPowerSource runningSource = parseEnum(runningPowerSource, RunningPowerSource::fromWireValue,
+				RunningPowerSource::wireValue, "runningPowerSource", "stryd, native");
+		BikePowerSource bikeSource = parseEnum(bikePowerSource, BikePowerSource::fromWireValue,
+				BikePowerSource::wireValue, "bikePowerSource", "pedals, trainer, any");
+
+		User athlete = userService.getById(athleteId);
+		// min <= max is checked against the merged result (this call's value if passed, else the
+		// stored one), like AthleteService.updateProfile does, since a call can pass only one.
+		int mergedMin = thresholdDecayMinPct != null ? thresholdDecayMinPct : athlete.getThresholdDecayMinPct();
+		int mergedMax = thresholdDecayMaxPct != null ? thresholdDecayMaxPct : athlete.getThresholdDecayMaxPct();
+		if ((thresholdDecayMinPct != null || thresholdDecayMaxPct != null) && mergedMin > mergedMax) {
+			String field = thresholdDecayMaxPct != null && thresholdDecayMinPct == null
+					? "thresholdDecayMaxPct" : "thresholdDecayMinPct";
+			throw new ValidationException("thresholdDecayMinPct must not be greater than thresholdDecayMaxPct.", field);
+		}
+		User setBy = callerSub.equals(athleteId) ? athlete : userService.getById(callerSub);
+		athleteService.updateProfile(athlete, AthleteUpdateRequest.thresholdSettings(thresholdWindowDays,
+				thresholdSanityPct, method, runningSource, bikeSource, thresholdDecayEnabled, thresholdDecayTauDays,
+				thresholdDecayMinPct, thresholdDecayMaxPct), setBy);
+
+		return athleteProfileTools.thresholdSettingsOf(athlete);
+	}
+
+	private static void requireRange(Integer value, int min, int max, String field) {
+		if (value != null && (value < min || value > max)) {
+			throw new ValidationException("Must be between " + min + " and " + max + ".", field);
+		}
+	}
+
+	/** Accepts only the exact lowercase wire value - fromWireValue alone also takes "PEDALS" or
+	 * "Sixty_Min_Direct", which the Django backend's tool rejects. */
+	private static <T> T parseEnum(String value, java.util.function.Function<String, T> parser,
+			java.util.function.Function<T, String> wire, String field, String allowed) {
+		if (value == null) {
+			return null;
+		}
+		T parsed;
+		try {
+			parsed = parser.apply(value);
+		}
+		catch (IllegalArgumentException e) {
+			parsed = null;
+		}
+		if (parsed == null || !wire.apply(parsed).equals(value)) {
+			throw new ValidationException("Must be one of: " + allowed + ".", field);
+		}
+		return parsed;
 	}
 }

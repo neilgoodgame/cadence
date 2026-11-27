@@ -17,7 +17,9 @@ import com.cadence.api.activities.TagRepository;
 import com.cadence.api.activities.dto.ActivitySplitsResponse;
 import com.cadence.api.athletes.AcceptedThresholdCandidate;
 import com.cadence.api.athletes.AcceptedThresholdCandidateRepository;
+import com.cadence.api.athletes.BikePowerSource;
 import com.cadence.api.athletes.FitnessPoint;
+import com.cadence.api.athletes.FtpCalculationMethod;
 import com.cadence.api.athletes.OverlapHandling;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
@@ -1056,6 +1058,68 @@ class McpToolsIntegrationTest extends IntegrationTest {
 		assertThat(result.get("threshold_sanity_pct")).isEqualTo(20);
 		assertThat(result.get("ftp_calculation_method")).isEqualTo(athlete.getFtpCalculationMethod());
 		assertThat(result.get("running_power_source")).isEqualTo(athlete.getRunningPowerSource());
+		assertThat(result.get("threshold_decay_enabled")).isEqualTo(false);
+		assertThat(result.get("threshold_decay_tau_days")).isEqualTo(athlete.getThresholdDecayTauDays());
+		assertThat(result.get("threshold_decay_min_pct")).isEqualTo(athlete.getThresholdDecayMinPct());
+		assertThat(result.get("threshold_decay_max_pct")).isEqualTo(athlete.getThresholdDecayMaxPct());
+	}
+
+	// Issue #499: the MCP counterpart of editing these settings in Preferences.
+	@Test
+	void updateThresholdSettingsChangesOnlyTheSettingsPassed() {
+		User athlete = saveAthlete("mcp-threshold-settings-update@example.cc");
+		athlete.setThresholdSanityPct(20);
+		userRepository.save(athlete);
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		var result = athleteProfileWriteTools.updateThresholdSettings(90, null, "sixty_min_direct", null, "pedals",
+				true, 30, null, null);
+
+		assertThat(result.get("threshold_window_days")).isEqualTo(90);
+		assertThat(result.get("bike_power_source")).isEqualTo(BikePowerSource.PEDALS);
+		assertThat(result.get("ftp_calculation_method")).isEqualTo(FtpCalculationMethod.SIXTY_MIN_DIRECT);
+		assertThat(result.get("threshold_decay_enabled")).isEqualTo(true);
+		assertThat(result.get("threshold_decay_tau_days")).isEqualTo(30);
+		assertThat(result.get("threshold_sanity_pct")).isEqualTo(20); // not passed, so unchanged
+		User reloaded = userRepository.findById(athlete.getId()).orElseThrow();
+		assertThat(reloaded.getThresholdWindowDays()).isEqualTo(90);
+		assertThat(reloaded.getBikePowerSource()).isEqualTo(BikePowerSource.PEDALS);
+		assertThat(reloaded.isThresholdDecayEnabled()).isTrue();
+		assertThat(reloaded.getThresholdSanityPct()).isEqualTo(20);
+	}
+
+	@Test
+	void updateThresholdSettingsRejectsInvalidValues() {
+		User athlete = saveAthlete("mcp-threshold-settings-bad@example.cc");
+		authAs(athlete.getId(), "activities:read", "activities:write");
+
+		List<org.assertj.core.api.ThrowableAssert.ThrowingCallable> calls = List.of(
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, null, null, null),
+				() -> athleteProfileWriteTools.updateThresholdSettings(0, null, null, null, null, null, null, null, null),
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, 101, null, null, null, null, null, null, null),
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, "not-a-source", null, null, null, null),
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, "not-a-method", null, null, null, null, null, null),
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, 5, null, null),
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, null, 8, 4),
+				// Exact lowercase wire values only, matching the Django tool (#612 review).
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, "PEDALS", null, null, null, null),
+				// A valid window alongside a bad tau: nothing is applied (#612 review).
+				() -> athleteProfileWriteTools.updateThresholdSettings(90, null, null, null, null, null, 5, null, null),
+				// Only max passed, below the stored min (3): checked against the merged values.
+				() -> athleteProfileWriteTools.updateThresholdSettings(null, null, null, null, null, null, null, null, 2));
+		for (var call : calls) {
+			assertThatThrownBy(call).isInstanceOf(ValidationException.class);
+		}
+		assertThat(userRepository.findById(athlete.getId()).orElseThrow().getThresholdWindowDays()).isEqualTo(112);
+	}
+
+	@Test
+	void updateThresholdSettingsRequiresActivitiesWriteScope() {
+		User athlete = saveAthlete("mcp-threshold-settings-scope@example.cc");
+		authAs(athlete.getId(), "activities:read");
+
+		assertThatThrownBy(() -> athleteProfileWriteTools.updateThresholdSettings(90, null, null, null, null, null, null,
+				null, null)).isInstanceOf(ForbiddenException.class);
 	}
 
 	@Test

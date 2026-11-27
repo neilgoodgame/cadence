@@ -87,6 +87,24 @@ public record AthleteUpdateRequest(
 		Integer bestEffortTopNRunningPace,
 		Integer bestEffortTopNPower) {
 
+	/** Only the threshold settings set (everything else null, so untouched) - for the
+	 * update_threshold_settings MCP tool (issue #499), so it doesn't have to spell out this
+	 * record's 48 positional components by hand. */
+	public static AthleteUpdateRequest thresholdSettings(Integer thresholdWindowDays, Integer thresholdSanityPct,
+			FtpCalculationMethod ftpCalculationMethod, RunningPowerSource runningPowerSource,
+			BikePowerSource bikePowerSource, Boolean thresholdDecayEnabled, Integer thresholdDecayTauDays,
+			Integer thresholdDecayMinPct, Integer thresholdDecayMaxPct) {
+		return new AthleteUpdateRequest(null, null, null, null, null, null, null, null, null, null, null,
+				ftpCalculationMethod, runningPowerSource,
+				null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, null,
+				thresholdWindowDays, thresholdSanityPct,
+				null, null, null, null,
+				bikePowerSource, null, null,
+				thresholdDecayEnabled, thresholdDecayTauDays, thresholdDecayMinPct, thresholdDecayMaxPct,
+				null, null);
+	}
+
 	/** Partial: any subset of CourseSections.Settings, merged into the athlete's current settings.
 	 * Ranges are checked on the merged result, so a pair like flat/steep is checked together. */
 	public record SectionSettingsUpdate(
