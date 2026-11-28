@@ -14,6 +14,7 @@ import { getContexts } from "../api/auth";
 import { useAuth } from "../auth/AuthContext";
 import { Card } from "../components/Card";
 import { ActivityNameLink } from "../components/ActivityNameLink";
+import { ExcludedActivitiesList } from "./ExcludedActivitiesList";
 import { ThresholdHistoryChart } from "./ThresholdHistoryChart";
 import { daysInEffect, deltaLabel, groupDecayedRuns, type LedgerRow } from "./thresholdHistory";
 import { AddRaceModal } from "./calendar/AddRaceModal";
@@ -614,6 +615,8 @@ export function ThresholdHistoryScreen() {
               </div>
             </>
           )}
+
+          <ExcludedActivitiesList athleteId={user.id} field={active.field as ThresholdFieldName} />
         </>
       )}
     </div>
