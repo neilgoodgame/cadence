@@ -161,7 +161,7 @@ public class ThresholdHistoryCalculator {
 		List<Integer> tSeries = records.stream().map(RecordRepository.PowerTimeDistance::getT).toList();
 		List<Double> distanceKmSeries = records.stream().map(RecordRepository.PowerTimeDistance::getDistanceKm).toList();
 
-		return switch (field) {
+		ImpliedValueDetail detail = switch (field) {
 			case FTP -> {
 				// Issue #499/#503 phase 1: excluded if this activity's attached-primary power
 				// source disagrees with the athlete's *current* bikePowerSource preference - same
@@ -202,6 +202,18 @@ public class ThresholdHistoryCalculator {
 				yield bestPace == null ? null : new ImpliedValueDetail("60min", bestPace, Math.round(bestPace));
 			}
 		};
+
+		// Issue #626: a non-positive final value is no candidate, for any of the three fields. A run
+		// whose power channel is all zeros - or all blanks, or all blanks once
+		// RunningPowerSanitizer has nulled its spikes - has a 60-minute best of exactly 0W, since
+		// bestAverage reads a missing sample as zero rather than as "no data," and with no reference
+		// value yet withinSanityBand's "nothing to compare it to" passthrough lets that through: that
+		// is how a 2026-08-28 history rebuild filed 0W as a real athlete's current critical running
+		// power, on staging, where it stayed current for 3.5 months. Gating on the final value rather
+		// than on a particular sample pattern also covers FTP, which has no all-blanks guard of its
+		// own, and any future calculator change. A NaN fails this test too, which is the wanted
+		// answer if one ever appears.
+		return detail != null && detail.value() > 0 ? detail : null;
 	}
 
 	/** The value this one activity's own best effort implies for `field` - raw units (watts for
