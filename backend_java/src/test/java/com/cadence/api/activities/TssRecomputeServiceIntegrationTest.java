@@ -12,8 +12,12 @@ import com.cadence.api.users.UserRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import jakarta.persistence.EntityManager;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** recomputeForActivity/recomputeForAthlete read the ThresholdHistory entry effective as of the
  * activity's own date, not the athlete's current profile - the actual bug this ledger feature
@@ -31,6 +35,10 @@ class TssRecomputeServiceIntegrationTest extends IntegrationTest {
 	private RecordRepository recordRepository;
 	@Autowired
 	private ThresholdHistoryRepository thresholdHistoryRepository;
+	@Autowired
+	private EntityManager entityManager;
+	@Autowired
+	private PlatformTransactionManager transactionManager;
 
 	private User newAthlete(String email, int ftp) {
 		User user = new User();
@@ -116,5 +124,25 @@ class TssRecomputeServiceIntegrationTest extends IntegrationTest {
 		assertThat(updated).isEqualTo(2);
 		assertThat(activityRepository.findById(lowerFtpRide.getId()).orElseThrow().getTss()).isEqualTo(100);
 		assertThat(activityRepository.findById(higherFtpRide.getId()).orElseThrow().getTss()).isEqualTo(100);
+	}
+
+	@Test
+	void aBulkReRateKeepsNoRecordEntitiesInThePersistenceContext() {
+		// #616: a threshold exclusion re-rated ~19 months of rides inside one transaction and
+		// took the staging backend OOM - every Record entity rate() loaded stayed managed until
+		// commit. It now reads (power, heartrate) as scalars, so none should be left behind.
+		User athlete = newAthlete("tss-rerate-no-records@example.cc", 250);
+		newRideWithConstantPower(athlete, Instant.parse("2026-01-01T07:00:00Z"), 250, 200, 600);
+		newRideWithConstantPower(athlete, Instant.parse("2026-01-02T07:00:00Z"), 250, 220, 600);
+
+		int managedEntities = new TransactionTemplate(transactionManager).execute(status -> {
+			tssRecomputeService.recomputeForAthleteFrom(athlete, Instant.parse("2026-01-01T00:00:00Z"));
+			return entityManager.unwrap(Session.class).getStatistics().getEntityCount();
+		});
+
+		// 1,200 records were scanned; what's left managed is the two activities, the athlete and
+		// their zone/ledger rows - a handful, never a stream's worth.
+		assertThat(managedEntities).isLessThan(50);
+		assertThat(activityRepository.findRecomputeCandidates(athlete.getId())).allSatisfy(a -> assertThat(a.getTss()).isPositive());
 	}
 }
