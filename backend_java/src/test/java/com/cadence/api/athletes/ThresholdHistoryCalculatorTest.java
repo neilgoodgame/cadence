@@ -276,6 +276,54 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 	}
 
 	@Test
+	void criticalRunPowerIgnoresARunWhosePowerSamplesAreAllZero() {
+		// Issue #626, the counterpart of the test above: the power channel isn't absent here, it
+		// recorded 0 for every second, so the noneMatch(nonNull) guard passes it through and
+		// bestAverage answers 0.0 - and with no criticalRunPower on the athlete yet,
+		// withinSanityBand's "nothing to compare it to" passthrough lets that through too. That
+		// combination is what filed a measured 0W as a real athlete's current critical running
+		// power on staging, so it stays current for 3.5 months.
+		athlete = newAthlete("threshold-history-all-zero-power-run@example.cc", null);
+		newPowerActivity(athlete, Sport.RUN, Instant.parse("2026-02-01T07:00:00Z"), 0, 3600);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.CRITICAL_RUN_POWER, LocalDate.of(2026, 2, 15));
+
+		assertThat(candidate).isNull();
+	}
+
+	@Test
+	void ftpIgnoresARideWhosePowerSamplesAreAllZero() {
+		// ftp has no all-blanks guard of its own at all, which is why the new check is on the
+		// final value rather than on a sample pattern. ftp is null here deliberately - against a
+		// set ftp a 0 would already fail the sanity band, so a non-null-ftp athlete would hide
+		// the bug from this test.
+		athlete = newAthlete("threshold-history-all-zero-power-ride@example.cc", null);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-05-15T07:00:00Z"), 0, 1200);
+
+		ThresholdHistoryCalculator.Candidate candidate =
+				calculator.currentWindowValue(athlete, ThresholdField.FTP, LocalDate.of(2026, 6, 1));
+
+		assertThat(candidate).isNull();
+	}
+
+	@Test
+	void candidateStatusesReportsAZeroPowerRunAsTooShort() {
+		// The one visible side effect of the guard, pinned down: such an activity now classifies
+		// as TOO_SHORT ("no qualifying effort computed either way") rather than as a computed
+		// candidate worth 0W, so list_threshold_candidates stops showing a 0W "implies" line.
+		athlete = newAthlete("threshold-history-all-zero-power-status@example.cc", null);
+		newPowerActivity(athlete, Sport.RUN, Instant.parse("2026-02-01T07:00:00Z"), 0, 3600);
+
+		List<ThresholdHistoryCalculator.CandidateStatusEntry> statuses = calculator.candidateStatuses(
+				athlete, ThresholdField.CRITICAL_RUN_POWER, LocalDate.of(2026, 2, 1), LocalDate.of(2026, 2, 15));
+
+		assertThat(statuses).hasSize(1);
+		assertThat(statuses.get(0).status()).isEqualTo(ThresholdHistoryCalculator.CandidateStatus.TOO_SHORT);
+		assertThat(statuses.get(0).impliedValue()).isNull();
+	}
+
+	@Test
 	void ftpExcludesAnActivityWhoseBikePowerSourceDisagreesWithPreference() {
 		athlete = newAthlete("threshold-history-bike-power-mismatch@example.cc", 200);
 		athlete.setBikePowerSource(com.cadence.api.athletes.BikePowerSource.PEDALS);
@@ -510,6 +558,38 @@ class ThresholdHistoryCalculatorTest extends IntegrationTest {
 
 		assertThat(entries).hasSize(powers.length);
 		assertThat(entries.get(entries.size() - 1).value()).isEqualTo(Math.round(0.95 * powers[powers.length - 1]));
+	}
+
+	@Test
+	void replayNeverLeadsWithAZeroWattRun() {
+		// Issue #626 through the rebuild path rather than the live window - this is how the
+		// staging row was actually written, by a full history rebuild on 2026-08-28. Before the
+		// guard the 0W run took the ledger first and then disabled the sanity band for the
+		// genuine effort behind it as well, since a reference of 0 counts as "no reference".
+		athlete = newAthlete("threshold-history-replay-zero-power-run@example.cc", null);
+		newPowerActivity(athlete, Sport.RUN, Instant.parse("2026-01-01T07:00:00Z"), 0, 3600);
+		Activity real = newPowerActivity(athlete, Sport.RUN, Instant.parse("2026-01-20T07:00:00Z"), 250, 3600);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.CRITICAL_RUN_POWER);
+
+		assertThat(entries).extracting(ThresholdHistoryCalculator.ThresholdHistoryEntry::activityId)
+				.containsExactly(real.getId());
+		assertThat(entries.get(0).value()).isEqualTo(250);
+	}
+
+	@Test
+	void replayNeverLeadsWithAZeroWattRide() {
+		athlete = newAthlete("threshold-history-replay-zero-power-ride@example.cc", null);
+		newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-01T07:00:00Z"), 0, 1200);
+		Activity real = newPowerActivity(athlete, Sport.BIKE, Instant.parse("2026-01-20T07:00:00Z"), 250, 1200);
+
+		List<ThresholdHistoryCalculator.ThresholdHistoryEntry> entries =
+				calculator.replayFullHistory(athlete, ThresholdField.FTP);
+
+		assertThat(entries).extracting(ThresholdHistoryCalculator.ThresholdHistoryEntry::activityId)
+				.containsExactly(real.getId());
+		assertThat(entries.get(0).value()).isEqualTo(Math.round(0.95 * 250));
 	}
 
 	// --- replayFullHistory: correction-only row as sanity reference (issue #494) ---

@@ -116,6 +116,20 @@ class ImpliedValueDetail:
     value: float
 
 
+def _positive_detail(window: str, raw_value: float, value: float) -> ImpliedValueDetail | None:
+    """Builds an ImpliedValueDetail, or None when `value` isn't a positive number (issue #626).
+    Every "this activity implies nothing" case is already expressed as a None detail, and a
+    measured 0 is not a threshold any more than a negative one would be:
+    _sliding_window_best_avg reads a missing sample as 0W rather than as "no data," so a series
+    that is all zeros has a 60-minute best of exactly 0, and _within_sanity_band's "nothing to
+    compare it to yet" passthrough waves that through - which is how a 2026-08-28 history rebuild
+    filed 0W as a real athlete's current critical running power on staging, where it stayed
+    current for 3.5 months. Gating on the final value here, rather than on a particular sample
+    pattern, also covers ftp (which has no all-blanks guard of its own) and any future calculator
+    change. A NaN fails the test too, which is the wanted answer if one ever appears."""
+    return ImpliedValueDetail(window, raw_value, value) if value > 0 else None
+
+
 def _implied_value_detail(
     activity: Activity, field: str, records: list[tuple[int, int | None, float | None]] | None = None
 ) -> ImpliedValueDetail | None:
@@ -151,24 +165,26 @@ def _implied_value_detail(
             return None
         if activity.athlete.ftp_calculation_method == "sixty_min_direct":
             best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
-            return ImpliedValueDetail("60min", best_60min, round(best_60min)) if best_60min is not None else None
+            return _positive_detail("60min", best_60min, round(best_60min)) if best_60min is not None else None
         best_20min = _sliding_window_best_avg(power_series, FTP_TEST_WINDOW_SECONDS)
         if best_20min is None:
             return None
-        return ImpliedValueDetail("20min", best_20min, round(FTP_TEST_MULTIPLIER * best_20min))
+        return _positive_detail("20min", best_20min, round(FTP_TEST_MULTIPLIER * best_20min))
     if field == "critical_run_power":
         # Excluded (source doesn't match the athlete's current preference), or every sample is
         # genuinely absent (e.g. "native" preferred but this file has no native power meter at
         # all) - either way, not a qualifying candidate. _sliding_window_best_avg treats a
         # missing sample as 0W, not "no data" (power_series above already substituted 0 for
         # every None), so an all-absent series must be caught here rather than left to fall
-        # through to it.
+        # through to it. A series that is all literal 0s instead - a power channel that recorded
+        # nothing useful rather than nothing at all - is caught one step later, by
+        # _positive_detail.
         if not activity.matches_running_power_preference(activity.athlete) or not any(
             r[1] is not None for r in records
         ):
             return None
         best_60min = _sliding_window_best_avg(power_series, RUNNING_THRESHOLD_WINDOW_SECONDS)
-        return ImpliedValueDetail("60min", best_60min, round(best_60min)) if best_60min is not None else None
+        return _positive_detail("60min", best_60min, round(best_60min)) if best_60min is not None else None
     if field == "threshold_pace":
         best_pace = _best_pace_seconds_per_km_over_duration(
             t_series, distance_km_series, RUNNING_THRESHOLD_WINDOW_SECONDS
@@ -180,7 +196,7 @@ def _implied_value_detail(
         # whole-second "M:SS", so a raw sub-second float here could never compare equal to the
         # already-rounded stored value: every re-ingest inserted a spurious duplicate row for the
         # same still-current pace instead of recognizing it as unchanged.
-        return ImpliedValueDetail("60min", best_pace, round(best_pace))
+        return _positive_detail("60min", best_pace, round(best_pace))
     raise ValueError(f"Unknown field: {field}")
 
 

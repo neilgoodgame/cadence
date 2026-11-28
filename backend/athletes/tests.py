@@ -1469,6 +1469,33 @@ class ThresholdHistoryAlgorithmTests(TestCase):
         self.assertEqual(len(entries), len(powers))
         self.assertEqual(entries[-1].value, round(0.95 * powers[-1]))
 
+    def test_replay_never_leads_with_a_zero_watt_run(self):
+        # Issue #626, same two all-zero activities through the rebuild path rather than the live
+        # window - this is how the staging row actually got written (a full history rebuild on
+        # 2026-08-28). Before the guard the 0W run took the ledger first and then, being 0,
+        # disabled the sanity band for the genuine effort behind it as well, since a reference of
+        # 0 is treated as "no reference".
+        self._make_power_activity("run", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=0, duration_seconds=3600)
+        real = self._make_power_activity(
+            "run", datetime(2026, 1, 20, 7, 0, tzinfo=UTC), power=250, duration_seconds=3600
+        )
+
+        entries = replay_full_history(self.athlete, "critical_run_power")
+
+        self.assertEqual([e.activity_id for e in entries], [real.id])
+        self.assertEqual(entries[0].value, 250)
+
+    def test_replay_never_leads_with_a_zero_watt_ride(self):
+        self.athlete.ftp = None  # so the sanity band isn't what rejects the 0 (see the #626 tests above)
+        self.athlete.save(update_fields=["ftp"])
+        self._make_power_activity("bike", datetime(2026, 1, 1, 7, 0, tzinfo=UTC), power=0)
+        real = self._make_power_activity("bike", datetime(2026, 1, 20, 7, 0, tzinfo=UTC), power=250)
+
+        entries = replay_full_history(self.athlete, "ftp")
+
+        self.assertEqual([e.activity_id for e in entries], [real.id])
+        self.assertEqual(entries[0].value, round(0.95 * 250))
+
     # --- replay_full_history: correction-only row as sanity reference (issue #494) ---
 
     def test_replay_accepts_a_later_activity_using_a_correction_only_row_as_sanity_reference(self):
@@ -1755,6 +1782,45 @@ class ThresholdHistoryAlgorithmTests(TestCase):
             "run", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=None, duration_seconds=3600, power_source="native"
         )
         candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 2, 15))
+        self.assertIsNone(candidate)
+
+    def test_critical_run_power_ignores_a_run_whose_power_samples_are_all_zero(self):
+        # Issue #626, the counterpart of the test above: here the power channel isn't absent, it
+        # recorded 0 for every single second, so "is any sample present" passes it through and
+        # _sliding_window_best_avg answers with a best-of of exactly 0W. The athlete has no
+        # critical_run_power yet either, so _within_sanity_band has nothing to compare it against
+        # and waves it through too - which is the combination that filed a measured 0W as a real
+        # athlete's current critical running power on staging. No candidate is the right answer.
+        self._make_power_activity("run", datetime(2026, 2, 1, 7, 0, tzinfo=UTC), power=0, duration_seconds=3600)
+
+        candidate = current_window_value(self.athlete, "critical_run_power", as_of=date(2026, 2, 15))
+
+        self.assertIsNone(candidate)
+
+    def test_ftp_ignores_a_ride_whose_power_samples_are_all_zero(self):
+        # Same for a bike ride - and ftp has no all-blank guard of its own at all, which is why
+        # the check lives on the final value rather than on the sample pattern. ftp is cleared
+        # first so the sanity band isn't what makes this pass: against the setUp athlete's 200 a
+        # 0 would already be rejected as a 100% deviation, hiding the bug from this test.
+        self.athlete.ftp = None
+        self.athlete.save(update_fields=["ftp"])
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=0)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
+        self.assertIsNone(candidate)
+
+    def test_ftp_ignores_a_ride_whose_power_samples_are_all_zero_under_sixty_min_direct(self):
+        # The other ftp branch computes its own best average, so it needs the same guard - a
+        # 60-minute-direct athlete would otherwise get a 0W FTP from a turbo ride that recorded
+        # 0 throughout, once the ride is long enough to fill the 60-minute window.
+        self.athlete.ftp = None
+        self.athlete.ftp_calculation_method = "sixty_min_direct"
+        self.athlete.save(update_fields=["ftp", "ftp_calculation_method"])
+        self._make_power_activity("bike", datetime(2026, 5, 15, 7, 0, tzinfo=UTC), power=0, duration_seconds=3600)
+
+        candidate = current_window_value(self.athlete, "ftp", as_of=date(2026, 6, 1))
+
         self.assertIsNone(candidate)
 
     def test_ftp_excludes_an_activity_whose_bike_power_source_disagrees_with_preference(self):
