@@ -20,6 +20,7 @@ import { SourcesTab } from "./activity-analysis/SourcesTab";
 import { StatRow } from "./activity-analysis/StatRow";
 import { StatsTab } from "./activity-analysis/StatsTab";
 import { StreamChart } from "./activity-analysis/StreamChart";
+import { ThresholdExclusionControl } from "./activity-analysis/ThresholdExclusionControl";
 import { ThresholdHistoryIndicator } from "./activity-analysis/ThresholdHistoryIndicator";
 import { ZonesTab } from "./activity-analysis/ZonesTab";
 
@@ -59,6 +60,7 @@ export function ActivityAnalysisScreen() {
       )}
       {activity.primary_activity_id && <DuplicateBanner activity={activity} />}
       <ThresholdHistoryIndicator activity={activity} />
+      <ThresholdExclusionControl activity={activity} athleteId={user.id} />
 
       <Header activity={activity} />
       <StatRow activity={activity} />

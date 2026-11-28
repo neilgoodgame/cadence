@@ -240,6 +240,42 @@ export interface DataList<T> {
 
 export type ThresholdFieldName = "ftp" | "critical_run_power" | "threshold_pace";
 
+/** An activity excluded from one field's threshold detection (issue #616) - e.g. a ride on an
+ * uncalibrated power meter. See createThresholdExclusion in openapi.yaml. */
+export interface ThresholdExclusion {
+  field: ThresholdFieldName;
+  activity_id: string;
+  activity_name: string;
+  activity_date: string;
+  set_by_user_id: string | null;
+  created_at: string;
+}
+
+/** One ledger row in a ThresholdExclusionEffect's before/after diff. */
+export interface ThresholdExclusionLedgerRow {
+  kind: "measured" | "manual" | "decayed";
+  source_activity_id: string | null;
+  effective_from: string;
+  current_from: string;
+  /** Watts for ftp/critical_run_power, "M:SS" for threshold_pace. */
+  value: number | string | null;
+}
+
+/** What excluding an activity (or removing its exclusion) changed - or, with preview, would
+ * change - in the field's history from the activity's date on. */
+export interface ThresholdExclusionEffect {
+  field: ThresholdFieldName;
+  activity_id: string;
+  /** The activity's state after this call. */
+  excluded: boolean;
+  /** True if nothing was saved. */
+  preview: boolean;
+  value_before: number | string | null;
+  value_after: number | string | null;
+  rows_removed: ThresholdExclusionLedgerRow[];
+  rows_added: ThresholdExclusionLedgerRow[];
+}
+
 /** One row associated with this activity, in one of two ways distinguished by
  * source_activity_id - see Activity.threshold_history. source_activity_id equal to this
  * activity's own id means this activity's own effort produced the row; a *different* id means

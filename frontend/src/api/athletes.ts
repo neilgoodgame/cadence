@@ -14,6 +14,8 @@ import type {
   FitnessPoint,
   RecentTopEffort,
   StreamComparisonField,
+  ThresholdExclusion,
+  ThresholdExclusionEffect,
   ThresholdFieldName,
   ThresholdHistoryPoint,
   ThresholdHistoryResponse,
@@ -78,6 +80,45 @@ export function getDeviceAgreementTrend(
 
 export function excludeActivityFromBestEfforts(athleteId: string, activityId: string, kind: BestEffortKind): Promise<void> {
   return apiFetch(`/v1/athletes/${athleteId}/best-efforts/by-activity/${activityId}?kind=${kind}`, { method: "DELETE" });
+}
+
+/** Issue #616: the activities excluded from threshold detection, optionally for one field or one
+ * activity. Oldest activity first. */
+export function listThresholdExclusions(
+  athleteId: string,
+  filter: { field?: ThresholdFieldName; activityId?: string } = {},
+): Promise<DataList<ThresholdExclusion>> {
+  const query = toQueryString({ field: filter.field, activity_id: filter.activityId });
+  return apiFetch<DataList<ThresholdExclusion>>(`/v1/athletes/${athleteId}/threshold-exclusions${query}`);
+}
+
+/** Excludes an activity from one field's threshold detection. With preview, nothing is saved and
+ * the result shows what would change. A real exclusion rebuilds the field's history from the
+ * activity's date and re-rates every later activity of that sport, so on an old activity it can
+ * take a couple of minutes. */
+export function excludeFromThresholds(
+  athleteId: string,
+  field: ThresholdFieldName,
+  activityId: string,
+  preview: boolean,
+): Promise<ThresholdExclusionEffect> {
+  return apiFetch<ThresholdExclusionEffect>(`/v1/athletes/${athleteId}/threshold-exclusions`, {
+    method: "POST",
+    body: { field, activity_id: activityId, preview },
+  });
+}
+
+/** Removes an exclusion, so the activity counts again. Same preview and cost as excludeFromThresholds. */
+export function includeInThresholds(
+  athleteId: string,
+  field: ThresholdFieldName,
+  activityId: string,
+  preview: boolean,
+): Promise<ThresholdExclusionEffect> {
+  return apiFetch<ThresholdExclusionEffect>(
+    `/v1/athletes/${athleteId}/threshold-exclusions/${field}/${activityId}${toQueryString({ preview })}`,
+    { method: "DELETE" },
+  );
 }
 
 async function* sseBlocks(response: Response): AsyncGenerator<{ event: string; data: string }> {
