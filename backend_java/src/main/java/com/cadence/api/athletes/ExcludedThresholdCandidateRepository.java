@@ -16,6 +16,13 @@ public interface ExcludedThresholdCandidateRepository extends JpaRepository<Excl
 
 	List<ExcludedThresholdCandidate> findByAthleteIdAndField(String athleteId, ThresholdField field);
 
+	/** Every exclusion the athlete has, for the export (ExportWriter.writeThresholdExclusions). */
+	List<ExcludedThresholdCandidate> findByAthleteIdOrderByFieldAscActivityIdAsc(String athleteId);
+
+	/** The same, limited to one sport's activities, for a sport-scoped export. */
+	List<ExcludedThresholdCandidate> findByAthleteIdAndActivitySportOrderByFieldAscActivityIdAsc(
+			String athleteId, com.cadence.api.common.domain.Sport sport);
+
 	Optional<ExcludedThresholdCandidate> findByAthleteIdAndFieldAndActivityId(
 			String athleteId, ThresholdField field, String activityId);
 

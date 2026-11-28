@@ -131,6 +131,7 @@ public class ImportReader {
 	private final ZoneSetRepository zoneSetRepository;
 	private final com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService;
 	private final TransactionTemplate transactionTemplate;
+	private final com.cadence.api.athletes.ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository;
 
 	public ImportReader(GearService gearService, ShoeService shoeService, ShoeModelRepository shoeModelRepository,
 			ShoeModelVersionRepository shoeModelVersionRepository, WorkoutService workoutService,
@@ -142,7 +143,8 @@ public class ImportReader {
 			UserRepository userRepository, ThresholdHistoryRepository thresholdHistoryRepository,
 			ZoneSetRepository zoneSetRepository,
 			com.cadence.api.athletes.ThresholdSuggestionService thresholdSuggestionService,
-			PlatformTransactionManager transactionManager) {
+			PlatformTransactionManager transactionManager,
+			com.cadence.api.athletes.ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository) {
 		this.gearService = gearService;
 		this.shoeService = shoeService;
 		this.shoeModelRepository = shoeModelRepository;
@@ -164,6 +166,7 @@ public class ImportReader {
 		this.zoneSetRepository = zoneSetRepository;
 		this.thresholdSuggestionService = thresholdSuggestionService;
 		this.transactionTemplate = new TransactionTemplate(transactionManager);
+		this.excludedThresholdCandidateRepository = excludedThresholdCandidateRepository;
 	}
 
 	private record DeferredActivityLink(String newChildId, String oldTargetId, boolean isParent) {
@@ -326,6 +329,13 @@ public class ImportReader {
 								fileCounts == null ? null : (int) fileCounts.thresholdHistory());
 						importThresholdHistory(parser, athlete, activityIdMap, counts, progress);
 						progress.flush();
+						thresholdSuggestionService.invalidate(athlete.getId());
+					}
+					// Inside the "threshold_history" step - no onStep/progress of its own (see
+					// ExportWriter.writeThresholdExclusions). Invalidates the cached suggestions
+					// again: an exclusion changes which candidates they offer.
+					case "threshold_exclusions" -> {
+						importThresholdExclusions(parser, athlete, activityIdMap, counts);
 						thresholdSuggestionService.invalidate(athlete.getId());
 					}
 					case "best_efforts" -> {
@@ -907,6 +917,42 @@ public class ImportReader {
 				log.warn("Skipped threshold history import", e);
 			}
 			progress.tick();
+		}
+	}
+
+	/** Issue #616: carries over the activities excluded from threshold detection (see
+	 * ExportWriter.writeThresholdExclusions), re-linked to the new activity ids. Like
+	 * importThresholdHistory this writes the rows verbatim and rebuilds nothing - the imported
+	 * ledger already reflects the exclusions, and these only keep it that way through a later
+	 * rebuild. A row whose activity wasn't imported, or whose field isn't a threshold field, is
+	 * skipped. insertIfAbsent so re-importing the athlete's own export (activityIdMap pointing at
+	 * an existing, deduped activity that's already excluded) neither duplicates nor fails. A file
+	 * exported before this section existed has none, and imports with no exclusions. */
+	private void importThresholdExclusions(
+			JsonParser parser, User athlete, Map<String, String> activityIdMap, Counts counts) {
+		while (parser.nextToken() != JsonToken.END_ARRAY) {
+			var entry = parser.readValueAs(com.cadence.api.export.dto.ThresholdExclusionExportEntry.class);
+			String newActivityId = entry.activityId() != null ? activityIdMap.get(entry.activityId()) : null;
+			ThresholdField field;
+			try {
+				field = entry.field() != null ? ThresholdField.fromWireValue(entry.field()) : null;
+			}
+			catch (IllegalArgumentException e) {
+				field = null;
+			}
+			if (newActivityId == null || field == null) {
+				counts.skipped++;
+				continue;
+			}
+			String wireField = field.wireValue();
+			try {
+				transactionTemplate.executeWithoutResult(status -> excludedThresholdCandidateRepository
+						.insertIfAbsent(athlete.getId(), wireField, newActivityId, null));
+			}
+			catch (Exception e) {
+				counts.skipped++;
+				log.warn("Skipped threshold exclusion import", e);
+			}
 		}
 	}
 
