@@ -49,7 +49,13 @@ from django.utils.dateparse import parse_date, parse_datetime, parse_duration
 from accounts.models import User
 from activities.models import Activity, ActivityDurability, ActivityTag, BestEffort, Lap, Record, Tag
 from athletes import threshold_suggestions
-from athletes.models import ZONE_TYPE_CHOICES, ThresholdHistory, ZoneSet
+from athletes.models import (
+    THRESHOLD_FIELD_CHOICES,
+    ZONE_TYPE_CHOICES,
+    ExcludedThresholdCandidate,
+    ThresholdHistory,
+    ZoneSet,
+)
 from athletes.zones import reference_for
 from courses.models import Course
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
@@ -712,6 +718,32 @@ def _import_threshold_history(
     ThresholdHistory.objects.bulk_create(entries, batch_size=500)
 
 
+def _import_threshold_exclusions(
+    athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict
+) -> None:
+    """Issue #616: carries over the activities excluded from threshold detection (see
+    export_writer.py's _write_threshold_exclusions), re-linked to the new activity ids. Like
+    _import_threshold_history this writes the rows verbatim and rebuilds nothing - the imported
+    ledger already reflects the exclusions, and these only keep it that way through a later
+    rebuild. A row whose activity wasn't imported, or whose field isn't a threshold field, is
+    skipped. ignore_conflicts=True so re-importing the athlete's own export (activity_id_map
+    pointing at an existing, deduped activity that's already excluded) doesn't violate the
+    (athlete, field, activity) uniqueness constraint. A file exported before this section
+    existed has none, and imports with no exclusions."""
+    valid_fields = {f for f, _ in THRESHOLD_FIELD_CHOICES}
+    entries: list[ExcludedThresholdCandidate] = []
+    with _stream(stored_path) as gz:
+        for row in ijson.items(gz, "threshold_exclusions.item", use_float=True):
+            new_activity_id = activity_id_map.get(row.get("activity_id"))
+            if new_activity_id is None or row.get("field") not in valid_fields:
+                counts["items_skipped"] += 1
+                continue
+            entries.append(
+                ExcludedThresholdCandidate(athlete_id=athlete_id, field=row["field"], activity_id=new_activity_id)
+            )
+    ExcludedThresholdCandidate.objects.bulk_create(entries, batch_size=500, ignore_conflicts=True)
+
+
 def _import_best_efforts(
     athlete_id: str, stored_path: str, activity_id_map: dict[str, str], counts: dict, progress: _Progress
 ) -> None:
@@ -871,6 +903,7 @@ def read_import(
     progress = start_section("threshold_history", "threshold_history")
     _import_threshold_history(athlete_id, stored_path, activity_id_map, counts, progress)
     progress.flush()
+    _import_threshold_exclusions(athlete_id, stored_path, activity_id_map, counts)
     threshold_suggestions.invalidate(athlete_id)
 
     progress = start_section("best_efforts", "best_efforts")

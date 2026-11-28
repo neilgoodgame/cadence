@@ -270,6 +270,17 @@ def _threshold_history_qs(athlete_id: str, sport: str | None):
     return qs
 
 
+def _threshold_exclusions_qs(athlete_id: str, sport: str | None):
+    from athletes.models import ExcludedThresholdCandidate
+
+    # Filtered on the activity's own sport, like _best_efforts_qs, so a sport-scoped export never
+    # names an activity it doesn't contain (an exclusion's field always matches its sport anyway).
+    qs = ExcludedThresholdCandidate.objects.filter(athlete_id=athlete_id).order_by("field", "activity_id")
+    if sport:
+        qs = qs.filter(activity__sport=sport)
+    return qs
+
+
 def _best_efforts_qs(athlete_id: str, sport: str | None):
     # Filtered on the linked activity's own sport, not the kind's cycling_*/running_* prefix -
     # keeps this exactly in sync with which activities a sport-scoped export actually includes,
@@ -296,6 +307,16 @@ def _write_threshold_history(
         for entry in _threshold_history_qs(athlete_id, sport)
     )
     _write_array(gz, entries, progress)
+
+
+def _write_threshold_exclusions(gz: gzip.GzipFile, athlete_id: str, sport: str | None) -> None:
+    # Issue #616: the activities the athlete excluded from threshold detection, per field. Without
+    # these an import would bring a known-bad anchor back the next time the ledger is rebuilt.
+    # set_by isn't exported - it names a user on the exporting system - and an import leaves it
+    # null. Written inside the "threshold_history" step, like race_comments inside "races": an
+    # athlete has a handful at most, not worth a progress-bar section of its own.
+    entries = ({"field": e.field, "activity_id": e.activity_id} for e in _threshold_exclusions_qs(athlete_id, sport))
+    _write_array(gz, entries)
 
 
 def _write_best_efforts(
@@ -522,6 +543,8 @@ def write_export(
         gz.write(b',"threshold_history":')
         _write_threshold_history(gz, athlete_id, sport, progress)
         progress.flush()
+        gz.write(b',"threshold_exclusions":')
+        _write_threshold_exclusions(gz, athlete_id, sport)
 
         progress = start_section("best_efforts", counts["best_efforts"])
         gz.write(b',"best_efforts":')

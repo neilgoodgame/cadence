@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import User
 from activities.models import Activity, BestEffort, Lap, Record
-from athletes.models import ThresholdHistory, ZoneSet
+from athletes.models import ExcludedThresholdCandidate, ThresholdHistory, ZoneSet
 from authn.oauth_utils import issue_token_pair
 from courses.models import Course
 from gear.models import Bike, Component, Shoe, ShoeModel, ShoeModelVersion
@@ -539,6 +539,100 @@ class BestEffortExportImportTests(TestCase):
         from django.core.files.storage import default_storage
 
         default_storage.delete(relative_path)
+
+
+class ThresholdExclusionExportImportTests(TestCase):
+    """Issue #616: an exclusion must survive export/import, or the next ledger rebuild on the
+    importing account would bring the excluded (known-bad) anchor straight back."""
+
+    def _export(self, athlete, sport=None, name="exclusions"):
+        from django.core.files.storage import default_storage
+
+        relative_path = f"exports/test/{name}.json.gz"
+        write_export(athlete.id, sport, relative_path)
+        self.addCleanup(default_storage.delete, relative_path)
+        return relative_path
+
+    def _section(self, relative_path):
+        from django.core.files.storage import default_storage
+
+        with gzip.GzipFile(default_storage.path(relative_path)) as gz:
+            return json.load(gz)["threshold_exclusions"]
+
+    def _source(self, email):
+        source = _verified_user(email=email, password="x", name="Source")
+        ride = _make_activity(source, sport="bike", name="Bad power ride")
+        run = _make_activity(
+            source, sport="run", name="Bad pace run", start_date=datetime(2026, 1, 2, 7, 0, tzinfo=UTC)
+        )
+        ExcludedThresholdCandidate.objects.create(athlete=source, field="ftp", activity=ride, set_by=source)
+        ExcludedThresholdCandidate.objects.create(athlete=source, field="threshold_pace", activity=run)
+        return source, ride, run
+
+    def test_exclusions_round_trip_onto_the_new_activities(self):
+        source, ride, run = self._source("exclusion-roundtrip-source@example.cc")
+        target = _verified_user(email="exclusion-roundtrip-target@example.cc", password="x", name="Target")
+        path = self._export(source, name="exclusion-roundtrip")
+
+        self.assertEqual(
+            self._section(path),
+            sorted(
+                [{"field": "ftp", "activity_id": ride.id}, {"field": "threshold_pace", "activity_id": run.id}],
+                key=lambda e: e["field"],
+            ),
+        )
+
+        read_import(target.id, path)
+
+        imported = {
+            (e.field, e.activity.name, e.set_by_id) for e in ExcludedThresholdCandidate.objects.filter(athlete=target)
+        }
+        self.assertEqual(imported, {("ftp", "Bad power ride", None), ("threshold_pace", "Bad pace run", None)})
+        self.assertFalse(ExcludedThresholdCandidate.objects.filter(athlete=target, activity__athlete=source).exists())
+
+    def test_a_sport_filtered_export_carries_only_that_sports_exclusions(self):
+        source, ride, _ = self._source("exclusion-sport-filter@example.cc")
+
+        path = self._export(source, sport="bike", name="exclusion-sport-filter")
+
+        self.assertEqual(self._section(path), [{"field": "ftp", "activity_id": ride.id}])
+
+    def test_reimporting_the_same_athletes_own_export_does_not_duplicate_or_crash(self):
+        source, _, _ = self._source("exclusion-reimport@example.cc")
+        path = self._export(source, name="exclusion-reimport")
+
+        read_import(source.id, path)
+        read_import(source.id, path)
+
+        self.assertEqual(ExcludedThresholdCandidate.objects.filter(athlete=source).count(), 2)
+
+    def test_an_unmapped_activity_or_unknown_field_is_skipped(self):
+        from django.core.files.storage import default_storage
+
+        target = _verified_user(email="exclusion-dangling-target@example.cc", password="x", name="Target")
+        relative_path = "exports/test/exclusion-dangling.json.gz"
+        full_path = default_storage.path(relative_path)
+        import os
+
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        with gzip.GzipFile(full_path, mode="wb") as gz:
+            gz.write(
+                json.dumps(
+                    {
+                        "activities": [],
+                        "threshold_exclusions": [
+                            {"field": "ftp", "activity_id": "act_doesnotexist"},
+                            {"field": "weight", "activity_id": "act_doesnotexist"},
+                        ],
+                    }
+                ).encode("utf-8")
+            )
+        self.addCleanup(default_storage.delete, relative_path)
+
+        counts = read_import(target.id, relative_path)
+
+        self.assertEqual(counts["items_skipped"], 2)
+        self.assertFalse(ExcludedThresholdCandidate.objects.filter(athlete=target).exists())
 
 
 class SportFilterTests(TestCase):

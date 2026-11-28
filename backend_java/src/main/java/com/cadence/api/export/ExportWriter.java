@@ -9,6 +9,8 @@ import com.cadence.api.activities.LapMapper;
 import com.cadence.api.activities.LapRepository;
 import com.cadence.api.activities.StreamService;
 import com.cadence.api.activities.dto.LapResponse;
+import com.cadence.api.athletes.ExcludedThresholdCandidate;
+import com.cadence.api.athletes.ExcludedThresholdCandidateRepository;
 import com.cadence.api.athletes.ThresholdField;
 import com.cadence.api.athletes.ThresholdHistory;
 import com.cadence.api.athletes.ThresholdHistoryRepository;
@@ -129,6 +131,7 @@ public class ExportWriter {
 	private final GearMapper gearMapper;
 	private final ThresholdHistoryRepository thresholdHistoryRepository;
 	private final BestEffortRepository bestEffortRepository;
+	private final ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository;
 	private final UserRepository userRepository;
 	private final ZoneSetRepository zoneSetRepository;
 	private final EntityManager entityManager;
@@ -149,7 +152,8 @@ public class ExportWriter {
 			GearService gearService, ShoeService shoeService, BikeRepository bikeRepository, ShoeRepository shoeRepository,
 			ComponentRepository componentRepository, GearMapper gearMapper,
 			ThresholdHistoryRepository thresholdHistoryRepository, BestEffortRepository bestEffortRepository,
-			UserRepository userRepository, ZoneSetRepository zoneSetRepository, EntityManager entityManager) {
+			UserRepository userRepository, ZoneSetRepository zoneSetRepository, EntityManager entityManager,
+			ExcludedThresholdCandidateRepository excludedThresholdCandidateRepository) {
 		this.activityRepository = activityRepository;
 		this.activityService = activityService;
 		this.lapRepository = lapRepository;
@@ -173,6 +177,7 @@ public class ExportWriter {
 		this.gearMapper = gearMapper;
 		this.thresholdHistoryRepository = thresholdHistoryRepository;
 		this.bestEffortRepository = bestEffortRepository;
+		this.excludedThresholdCandidateRepository = excludedThresholdCandidateRepository;
 		this.userRepository = userRepository;
 		this.zoneSetRepository = zoneSetRepository;
 		this.entityManager = entityManager;
@@ -289,6 +294,7 @@ public class ExportWriter {
 		progress = startSection(onStep, onTotal, onProgress, "threshold_history", (int) counts.thresholdHistory());
 		writeThresholdHistory(athleteId, sportFilter, generator, progress);
 		progress.flush();
+		writeThresholdExclusions(athleteId, sportFilter, generator);
 
 		progress = startSection(onStep, onTotal, onProgress, "best_efforts", (int) counts.bestEfforts());
 		writeBestEfforts(athleteId, sportFilter, generator, progress);
@@ -450,6 +456,24 @@ public class ExportWriter {
 			generator.writePOJO(new ThresholdHistoryExportEntry(entry.getField(), entry.getValueNumeric(),
 					entry.getValuePace(), sourceActivityId, entry.getEffectiveFrom(), entry.getCurrentFrom(), entry.getKind()));
 			progress.tick();
+		}
+		generator.writeEndArray();
+	}
+
+	// Issue #616: the activities the athlete excluded from threshold detection, per field. Without
+	// these an import would bring a known-bad anchor back the next time the ledger is rebuilt.
+	// Filtered on the activity's own sport, like writeBestEfforts, so a sport-scoped export never
+	// names an activity it doesn't contain. Written inside the "threshold_history" step (no
+	// onStep/progress of its own), like race_comments inside "races" - an athlete has a handful.
+	private void writeThresholdExclusions(String athleteId, Sport sportFilter, JsonGenerator generator) {
+		generator.writeArrayPropertyStart("threshold_exclusions");
+		List<ExcludedThresholdCandidate> entries = sportFilter == null
+				? excludedThresholdCandidateRepository.findByAthleteIdOrderByFieldAscActivityIdAsc(athleteId)
+				: excludedThresholdCandidateRepository.findByAthleteIdAndActivitySportOrderByFieldAscActivityIdAsc(
+						athleteId, sportFilter);
+		for (ExcludedThresholdCandidate entry : entries) {
+			generator.writePOJO(new com.cadence.api.export.dto.ThresholdExclusionExportEntry(
+					entry.getField().wireValue(), entry.getActivity().getId()));
 		}
 		generator.writeEndArray();
 	}
